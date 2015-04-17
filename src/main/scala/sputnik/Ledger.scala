@@ -2,9 +2,9 @@ package sputnik
 
 import akka.actor.{Actor, ActorRef}
 import com.github.nscala_time.time.Imports._
-import sputnik.sputnik.LedgerDirection._
-import sputnik.sputnik.LedgerSide._
-import sputnik.sputnik._
+import sputnik.LedgerDirection._
+import sputnik.LedgerSide._
+import sputnik._
 
 import scala.collection.mutable
 
