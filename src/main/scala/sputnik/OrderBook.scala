@@ -1,6 +1,7 @@
 package sputnik
 
-import sputnik._
+import sputnik.sputnik.BookSide._
+
 import scala.collection.SortedSet
 
 /**
@@ -18,7 +19,7 @@ class OrderBook(bids: SortedSet[Order], asks: SortedSet[Order]) {
     * @return
     */
   def placeOrder(order: Order): (OrderBook, List[Order], List[Trade]) = {
-    val (matchBook, myBook) = if (order.side == "BUY") (asks, bids) else (bids, asks)
+    val (matchBook, myBook) = if (order.side == BUY) (asks, bids) else (bids, asks)
 
     /** Recursively matches the incoming order against the book until it can't match no more
       *
@@ -65,7 +66,7 @@ class OrderBook(bids: SortedSet[Order], asks: SortedSet[Order]) {
     val (newOrder, orders, fills, newBook) = doMatch(order, List[Order](), List[Trade](), matchBook)
 
     val newMyBook = if (!newOrder.isExhausted) myBook + newOrder else myBook
-    (if (order.side == "BUY") new OrderBook(newMyBook, newBook) else new OrderBook(newBook, newMyBook), (newOrder :: orders).reverse, fills.reverse)
+    (if (order.side == BUY) new OrderBook(newMyBook, newBook) else new OrderBook(newBook, newMyBook), (newOrder :: orders).reverse, fills.reverse)
   }
   def getOrderById(id: Int): Option[Order] = (bids ++ asks).find(_.id == id)
   def cancelOrder(id: Int): OrderBook = new OrderBook(bids.filter(_.id != id), asks.filter(_.id != id))

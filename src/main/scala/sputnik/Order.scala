@@ -5,13 +5,15 @@
 package sputnik
 
 import com.github.nscala_time.time.Imports._
+import sputnik.sputnik.BookSide._
+import sputnik.sputnik._
+
 import scala.math.Ordered.orderingToOrdered
-import sputnik._
 class OrderException(x: String) extends Exception(x)
 
-case class Order(id: Int, quantity: Quantity, price: Price, timestamp: DateTime, side: String, username: String) extends Ordered[Order] {
+case class Order(id: Int, quantity: Quantity, price: Price, timestamp: DateTime, side: BookSide, user: User) extends Ordered[Order] {
 
-  private val sign = if (side == "BUY") -1 else 1
+  private val sign = if (side == BUY) -1 else 1
 
   def matches(that: Order): Boolean = (this.side != that.side) && (sign * (this.price - that.price) <= 0)
 

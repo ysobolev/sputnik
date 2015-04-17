@@ -26,7 +26,6 @@ org.scala-ide.sdt.update-site/site.xml
 *.iml
 *.ipr
 *.iws
-.idea
 out
 
 # VIM
