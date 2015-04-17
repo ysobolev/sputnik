@@ -1,10 +1,7 @@
 package sputnik
 
-import akka.actor.{ActorRef, Actor}
+import akka.actor.Actor
 
-/**
- * Created by sameer on 4/16/15.
- */
 abstract class EngineRpc
 case class PlaceOrder(order: Order) extends EngineRpc
 case class CancelOrder(id: Int) extends EngineRpc
