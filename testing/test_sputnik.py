@@ -51,7 +51,7 @@ contracts set NETS2015 contract_type prediction
 contracts set NETS2015 denominator 1000
 contracts set NETS2015 lot_size 1000000
 contracts set NETS2015 tick_size 1
-contracts set NETS2015 expiration 2015-06-28
+contracts set NETS2015 expiration 2016-06-28
 contracts set NETS2015 denominated_contract_ticker BTC
 contracts set NETS2015 payout_contract_ticker NETS2015
 contracts set NETS2015 fees 200
@@ -61,7 +61,7 @@ contracts set USDBTC0W contract_type futures
 contracts set USDBTC0W denominator 1000
 contracts set USDBTC0W lot_size 100000
 contracts set USDBTC0W tick_size 1
-contracts set USDBTC0W expiration 2015-06-28
+contracts set USDBTC0W expiration 2016-06-28
 contracts set USDBTC0W denominated_contract_ticker BTC
 contracts set USDBTC0W payout_contract_ticker USDBTC0W
 contracts set USDBTC0W margin_low 25
