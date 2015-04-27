@@ -21,4 +21,14 @@ package object sputnik {
     type LedgerDirection = Value
     val DEBIT, CREDIT = Value
   }
+
+  object TradeSide extends Enumeration {
+    type TradeSide = Value
+    val MAKER, TAKER = Value
+  }
+
+  object ContractType extends Enumeration {
+    type ContractType = Value
+    val CASH, CASH_PAIR, FUTURES, PREDICTION = Value
+  }
 }

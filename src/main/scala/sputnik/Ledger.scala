@@ -1,10 +1,12 @@
 package sputnik
 
-import akka.actor.{Props, Actor, ActorRef}
+import java.util.UUID
+
+import akka.actor.{ActorLogging, Props, Actor, ActorRef}
 import com.github.nscala_time.time.Imports._
+import sputnik._
 import sputnik.LedgerDirection._
 import sputnik.LedgerSide._
-import sputnik._
 
 import scala.collection.mutable
 
@@ -12,19 +14,19 @@ class LedgerException(x: String) extends Exception(x)
 
 abstract class LedgerMessage
 
-case class NewPosting(count: Int, posting: Posting, uuid: String) extends LedgerMessage
-case class AddPosting(count: Int, posting: Posting, sender: ActorRef) extends LedgerMessage
-case class PostingResult(result: Boolean) extends LedgerMessage
-case class GetBalance(user: User) extends LedgerMessage
-case class NewJournal(journal: Journal) extends LedgerMessage
+case class NewPosting(count: Int, posting: Posting, uuid: UUID) extends LedgerMessage
+case class AddPosting(count: Int, posting: Posting) extends LedgerMessage
+case class PostingResult(uuid: UUID, result: Boolean) extends LedgerMessage
+case class GetBalances(account: Account) extends LedgerMessage
+case class NewJournal(uuid: UUID, journal: Journal) extends LedgerMessage
 
-case class Posting(contract: Contract, user: User, quantity: Quantity, direction: LedgerDirection) {
+case class Posting(contract: Contract, user: Account, quantity: Quantity, direction: LedgerDirection) {
   val timestamp = DateTime.now
 
   lazy val sign = {
     val user_sign = user match {
-      case User(_, ASSET) => 1
-      case User(_, LIABILITY) => -1
+      case Account(_, ASSET) => 1
+      case Account(_, LIABILITY) => -1
     }
     val dir_sign = direction match {
       case DEBIT => 1
@@ -35,13 +37,13 @@ case class Posting(contract: Contract, user: User, quantity: Quantity, direction
   lazy val signedQuantity = sign * quantity
 }
 
-class PostingGroup(count: Int, var postings: List[Posting], var senders: List[ActorRef]) extends Actor {
-  def add(count: Int, posting: Posting, sender: ActorRef): Unit = {
+class PostingGroup(uuid: UUID, count: Int, var postings: List[Posting])
+  extends Actor with ActorLogging {
+  def add(count: Int, posting: Posting): Unit = {
     if (count != this.count)
       throw new LedgerException("count mismatch")
     else {
       postings = posting :: postings
-      senders = sender :: senders
     }
   }
 
@@ -59,11 +61,14 @@ class PostingGroup(count: Int, var postings: List[Posting], var senders: List[Ac
   }
 
   def receive = {
-    case AddPosting(c, p, s) =>
-      add(c, p, s)
-      if (ready)
-        context.parent ! NewJournal(toJournal(""))
-        senders.foreach(_ ! PostingResult(result = true))
+    case AddPosting(c, p) =>
+      log.info(s"AddPosting($c, $p")
+      add(c, p)
+      if (ready) {
+        context.parent ! NewJournal(uuid, toJournal(""))
+        val accountants = postings.map(_.user.name).toSet[String].map(a => context.system.actorSelection("/user/accountant/" + a))
+        accountants.foreach(_ ! PostingResult(uuid, result = true))
+      }
   }
 }
 
@@ -73,28 +78,38 @@ case class Journal(typ: String, postings: List[Posting]) {
   def audit: Boolean = postings.groupBy(_.contract).forall(_._2.map(_.signedQuantity).sum == 0)
 }
 
-class Ledger extends Actor {
+class Ledger extends Actor with ActorLogging {
   var ledger = List[Journal]()
-  val pending = mutable.Map[String, ActorRef]()
+  val pending = mutable.Map[UUID, ActorRef]()
 
-  def getBalance(user: User, contract: Contract, timestamp: DateTime = DateTime.now): Quantity = {
-    val qtys = for {
-        entries<- ledger
-        posting@Posting(contract, user, quantity, _) <- entries
-      if posting.timestamp <= timestamp
-    } yield posting.signedQuantity
-    qtys.sum
+  def getBalances(user: Account, timestamp: DateTime = DateTime.now): Map[Contract, Quantity] = {
+    val quantities = for {
+      entry <- ledger
+      posting@Posting(contract, user, _, _) <- entry.postings
+      if entry.timestamp <= timestamp
+    } yield (contract, posting.signedQuantity)
+    quantities.groupBy[Contract](_._1).mapValues(_.map(_._2).sum)
   }
 
   def receive = {
     case NewPosting(count, posting, uuid) =>
-      if (pending contains uuid)
-        pending(uuid) ! AddPosting(count, posting, sender())
-      else
-        pending(uuid) = context.actorOf(Props(new PostingGroup(count, List(posting), List(sender()))), name = uuid)
-    case GetBalance(user, contract) => sender ! getBalance(user, contract)
-    case NewJournal(journal) =>
+      val currentSender = sender()
+      log.info(s"NewPosting($count, $posting, $uuid")
+      if (!pending.contains(uuid))
+        pending(uuid) = context.actorOf(Props(new PostingGroup(uuid, count, List())), name = uuid.toString)
+
+      pending(uuid) ! AddPosting(count, posting)
+
+    case GetBalances(user) =>
+      log.info(s"GetBalances($user)")
+      sender ! getBalances(user)
+
+    case NewJournal(uuid, journal) =>
+      log.info(s"NewJournal($uuid, $journal)")
       ledger = journal :: ledger
+      pending(uuid)
+      context.stop(pending(uuid))
+      pending -= uuid
   }
 }
 

@@ -1,12 +1,9 @@
 package sputnik
 
-import sputnik.sputnik.BookSide._
+import sputnik.BookSide._
 
 import scala.collection.SortedSet
 
-/**
- * Created by sameer on 4/15/15.
- */
 class OrderBook(bids: SortedSet[Order], asks: SortedSet[Order]) {
   def this() = {
     this(SortedSet(), SortedSet())

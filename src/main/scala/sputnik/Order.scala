@@ -1,17 +1,14 @@
-/**
- * Created by sameer on 4/15/15.
- */
 
 package sputnik
 
 import com.github.nscala_time.time.Imports._
-import sputnik.sputnik.BookSide._
-import sputnik.sputnik._
+import sputnik.BookSide._
+import sputnik._
 
 import scala.math.Ordered.orderingToOrdered
 class OrderException(x: String) extends Exception(x)
 
-case class Order(id: Int, quantity: Quantity, price: Price, timestamp: DateTime, side: BookSide, user: User) extends Ordered[Order] {
+case class Order(id: Int, quantity: Quantity, price: Price, timestamp: DateTime, side: BookSide, user: Account, contract: Contract) extends Ordered[Order] {
 
   private val sign = if (side == BUY) -1 else 1
 
