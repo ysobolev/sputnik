@@ -27,16 +27,25 @@
 
 __author__ = 'sameer'
 
-import treq
 import hmac
 import hashlib
 import json
 import time
 import base64
+from decimal import Decimal
+from pprint import pprint
+from urllib import urlencode
+
+import treq
 from twisted.internet.defer import inlineCallbacks, returnValue
 from twisted.internet import reactor
-from decimal import Decimal
+from twisted.python import log
+
 import util
+
+
+class BitFinexException(Exception):
+    pass
 
 class BitFinex():
     def __init__(self, api_key, api_secret, endpoint="https://api.bitfinex.com"):
@@ -45,31 +54,42 @@ class BitFinex():
         self.endpoint = endpoint
 
     def get_auth(self, call, params):
-        nonce = str(int(time.time() * 1e6))
-        params.update({'nonce': nonce,
-                       'request': call})
-        payload = base64.b64encode(json.dumps(params))
-        signature = hmac.new(self.api_secret, msg=payload, digestmod=hashlib.sha384).hexdigest().upper()
+        nonce = str(long(time.time() * 1e6))
+
+        if params:
+            request = call + "?" + urlencode(params)
+        else:
+            request = call
+
+        p = params.copy()
+        p.update({'nonce': nonce,
+             'request': request})
+
+        payload_json = json.dumps(p)
+        payload = base64.b64encode(payload_json.encode('utf-8'))
+        signature = hmac.new(self.api_secret, payload, hashlib.sha384).hexdigest()
         headers = {'x-bfx-apikey': self.api_key,
                    'x-bfx-payload': payload,
                    'x-bfx-signature': signature}
         return headers
 
     @inlineCallbacks
-    def get(self, call, params={}):
+    def get(self, call, params={}, auth=False):
         url = self.endpoint + call
-        response = yield treq.get(url, params=params)
-        content = yield response.content()
-        result = json.loads(content)
-        returnValue(result)
+        if auth:
+            headers = self.get_auth(call, params)
+        else:
+            headers = None
 
-    @inlineCallbacks
-    def post(self, call, data={}):
-        url = self.endpoint + call
-        headers = self.get_auth(call, data)
-        response = yield treq.post(url)
+        response = yield treq.get(url, params=params, headers=headers)
+
+
         content = yield response.content()
         result = json.loads(content)
+
+        if 'message' in result:
+            raise BitFinexException(result['message'])
+
         returnValue(result)
 
     def ticker_to_symbol(self, ticker):
@@ -90,6 +110,7 @@ class BitFinex():
                 'bids': [{'price': Decimal(bid['price']), 'quantity': Decimal(bid['amount'])} for bid in result['bids']],
                 'asks': [{'price': Decimal(ask['price']), 'quantity': Decimal(ask['amount'])} for ask in result['asks']],
                 'timestamp': None}
+        returnValue(book)
 
     @inlineCallbacks
     def getNewAddress(self, ticker):
@@ -98,7 +119,7 @@ class BitFinex():
             data = {'currency': ticker,
                     'method': 'bitcoin',
                     'wallet_name': 'trading'}
-            result = yield self.post(call, data=data)
+            result = yield self.get(call, params=data, auth=True)
             if result['result'] != 'success':
                 raise Exception(result['address'])
             else:
@@ -148,7 +169,7 @@ class BitFinex():
     @inlineCallbacks
     def getPositions(self):
         call = "/v1/balances"
-        result = yield self.post(call)
+        result = yield self.get(call, auth=True)
         positions = {balance['currency']: {'position': Decimal(balance['amount'])} for balance in result}
         returnValue(positions)
 
@@ -184,12 +205,9 @@ class BitFinex():
 
 
 if __name__ == "__main__":
-    bitfinex = BitFinex("BLAH", "BLAH")
-    bitfinex.getOrderBook('BTC/USD')
+    bitfinex = BitFinex()
+    #bitfinex.getOrderBook('BTC/USD').addCallback(pprint).addErrback(log.err)
+    #bitfinex.getPositions().addCallback(pprint).addErrback(log.err)
+    bitfinex.getNewAddress('BTC').addCallback(pprint).addErrback(log.err)
 
     reactor.run()
-
-
-
-        
-
