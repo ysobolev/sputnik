@@ -25,21 +25,24 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 __author__ = 'sameer'
 
-
-import treq
 import json
-from twisted.internet.defer import inlineCallbacks, returnValue
-from twisted.internet import reactor
-from twisted.python import log, failure
-import string
 import hmac
 import hashlib
 import time
 from decimal import Decimal
 from pprint import pprint
-from datetime import datetime
 import urllib
+import base64
+
+import treq
+from twisted.internet.defer import inlineCallbacks, returnValue
+from twisted.internet import reactor, task
+from twisted.python import log
 from pyee import EventEmitter
+
+
+class KrakenException(Exception):
+    pass
 
 class Kraken(EventEmitter):
     def __init__(self, id=None, secret=None, endpoint="https://api.kraken.com"):
@@ -50,54 +53,81 @@ class Kraken(EventEmitter):
         self.api_version = 0
         self.ticker_map = {'BTC/USD': 'XXBTZUSD',
                            'BTC/LTC': 'XXBTXLTC',
-                           'LTC': 'XLTC',
-                           'BTC': 'XBTC',
+                           'BTC/DGC': 'XXBTXXDG',
+                           'LTC': 'XXLT',
+                           'BTC': 'XXBT',
+                           'DGC': 'XXDG',
                            'USD': 'ZUSD'}
         self.reverse_ticker_map = {v: k for k, v in self.ticker_map.iteritems()}
 
+
     @inlineCallbacks
     def connect(self):
-        # Make sure we can get the time
-        # TODO: make sure we can do something that requires auth
-        yield self.public("Time")
+        # Make sure we can get positions
+        yield self.getPositions()
+
+        self.heartbeat = task.LoopingCall(self._heartbeat)
+        self.heartbeat.start(60)
         self.emit("connect", self)
+
+    @inlineCallbacks
+    def _heartbeat(self):
+        try:
+            yield self._public("Time")
+        except Exception as e:
+            log.err("Heartbeat failure")
+            log.err(e)
+            self.emit("disconnect", self)
 
     @inlineCallbacks
     def handle_response(self, response):
         content = yield response.content()
         result = json.loads(content)
-        returnValue(result['result'])
+        if 'result' in result:
+            returnValue(result['result'])
+        else:
+            raise KrakenException(result['error'])
 
     @inlineCallbacks
     def placeOrder(self, contract, quantity, price, side):
         if contract in self.ticker_map:
             pair = self.ticker_map[contract]
             info_params = {'pair': pair}
-            info = yield self.public("AssetPairs", info_params)
+            info = yield self._public("AssetPairs", info_params)
             lot_multiplier = info[pair]['lot_multiplier']
             params = {'pairs': pair,
                       'type': "buy" if side == "BUY" else "sell",
                       'price': price,
                       'volume': quantity/lot_multiplier
             }
-            result = yield self.private("AddOrder", params)
+            result = yield self._private("AddOrder", params)
             returnValue(result['txid'][0])
         else:
             raise NotImplementedError
 
     @inlineCallbacks
     def getPositions(self):
-        result = yield self.private("Balance")
-        positions = {self.reverse_ticker_map[position['pair']]:  {'position': position['balance'] } for position in result}
+        result = yield self._private("Balance")
+        positions = {self.reverse_ticker_map[pair]:  {'position': Decimal(position) } for pair, position in result.iteritems()}
         returnValue(positions)
+
+    @inlineCallbacks
+    def getDepositMethods(self, ticker):
+        if ticker in self.ticker_map:
+            params = {'asset': self.ticker_map[ticker]}
+            result = yield self._private("DepositMethods")
+            returnValue(result)
+        else:
+            raise NotImplementedError
 
     @inlineCallbacks
     def getCurrentAddress(self, ticker):
         if ticker in self.ticker_map:
+            r = yield self.getDepositMethods(ticker)
             params = {'asset': self.ticker_map[ticker],
-                      'method': '?',
+                      'method': r[0]['method'],
                       'new': False}
-            result = self.private("DepositAddresses", params)
+            result = yield self._private("DepositAddresses", params)
             returnValue(result['address'])
         else:
             raise NotImplementedError
@@ -105,10 +135,11 @@ class Kraken(EventEmitter):
     @inlineCallbacks
     def getNewAddress(self, ticker):
         if ticker in self.ticker_map:
+            r = yield self.getDepositMethods(ticker)
             params = {'asset': self.ticker_map[ticker],
-                      'method': '?',
+                      'method': r[0]['method'],
                       'new': True}
-            result = yield self.private("DepositAddresses", params)
+            result = yield self._private("DepositAddresses", params)
             returnValue(result['address'])
         else:
             raise NotImplementedError
@@ -119,19 +150,19 @@ class Kraken(EventEmitter):
             params = {'asset': self.ticker_map[ticker],
                       'key': address,
                       'amount': amount}
-            result = yield self.private("Withdraw", params)
+            result = yield self._private("Withdraw", params)
             returnValue(result['refid'])
         else:
             raise NotImplementedError
 
     @inlineCallbacks
     def cancelOrder(self, id):
-        result = yield self.private("CancelOrder", {'txid': id})
+        result = yield self._private("CancelOrder", {'txid': id})
         returnValue(result['count'] > 0)
 
     @inlineCallbacks
     def getOpenOrders(self):
-        result = yield self.private("OpenOrders")
+        result = yield self._private("OpenOrders")
         orders = {order['refid']: {
             'id': order['refid'],
             'side': "BUY" if order['descr']['type'] == "buy" else "SELL",
@@ -149,7 +180,7 @@ class Kraken(EventEmitter):
             'start': util.dt_to_timestamp(start_datetime)/1e6,
             'end': util.dt_to_timestamp(end_datetime)/1e6
         }
-        result = yield self.private("Ledgers", params)
+        result = yield self._private("Ledgers", params)
         type_map = {'deposit': "Deposit",
                     'withdrawal': "Withdrawal",
                     'trade': "Trade",
@@ -164,28 +195,28 @@ class Kraken(EventEmitter):
                         for tx in result.values()]
         returnValue(transactions)
 
-    def private(self, method, params = {}):
-        urlpath = "%s/%s/private/%s" % (self.endpoint, self.api_version, method)
+    def _private(self, method, params = {}):
+        urlpath = "/%s/private/%s" % (self.api_version, method)
         nonce = int(time.time() * 1e6)
         params['nonce'] = nonce
         postdata = urllib.urlencode(params)
         message = urlpath + hashlib.sha256(str(nonce) + postdata).digest()
-        signature = hmac.new(base64.base64decode(self.api_secret), message, hashlib.sha512)
+        signature = hmac.new(base64.b64decode(self.api_secret), message, hashlib.sha512)
         headers = {
             'API-Key': self.api_key,
             'API-Sign': base64.b64encode(signature.digest())
         }
 
-        return treq.post(urlpath, data=params, headers=headers).addCallback(self.handle_response)
+        return treq.post(self.endpoint + urlpath, data=params, headers=headers).addCallback(self.handle_response)
 
-    def public(self, method, params = {}):
+    def _public(self, method, params = {}):
         urlpath = "%s/%s/public/%s" % (self.endpoint, self.api_version, method)
         return treq.get(urlpath, params=params).addCallback(self.handle_response)
 
     @inlineCallbacks
     def getMarkets(self):
-        asset_pairs = yield self.public("AssetPairs")
-        assets = yield self.public("Assets")
+        asset_pairs = yield self._public("AssetPairs")
+        assets = yield self._public("Assets")
         assets.update(asset_pairs)
         # TODO: Process this into standard format
         self.markets = assets
@@ -196,7 +227,7 @@ class Kraken(EventEmitter):
         if ticker in self.ticker_map:
             symbol = self.ticker_map[ticker]
             params = {'pair': symbol}
-            result = yield self.public("Depth", params)
+            result = yield self._public("Depth", params)
             book = {'contract': ticker,
                     'bids': [{'price': Decimal(r[0]), 'quantity': Decimal(r[1])} for r in result[symbol]['bids']],
                     'asks': [{'price': Decimal(r[0]), 'quantity': Decimal(r[1])} for r in result[symbol]['asks']]
@@ -207,8 +238,12 @@ class Kraken(EventEmitter):
 
 if __name__ == "__main__":
     kraken = Kraken()
-    d = kraken.getMarkets().addCallback(pprint)
-    #d = kraken.getOrderBook('BTC/LTC').addCallback(pprint).addErrback(log.err)
+    d = kraken.getMarkets().addCallback(pprint) # tested, works
+    d = kraken.getOrderBook('BTC/DGC').addCallback(pprint).addErrback(log.err) # tested, works
+
+    #d = kraken.getPositions().addCallback(pprint).addErrback(log.err) # tested, works
+    #d = kraken.getNewAddress('USD').addCallback(pprint).addErrback(log.err)
+    #d = kraken.requestWithdrawal('BTC', 0.001, 'sadfkl').addCallback(pprint).addErrback(log.err)
     reactor.run()
 
 
