@@ -18,11 +18,11 @@ import scala.concurrent.duration._
 class AccountantException(x: String) extends Exception(x)
 abstract class AccountantMessage
 
-case class Account(name: String, side: LedgerSide = LIABILITY)
+case class Account(name: String, side: LedgerSide = LIABILITY) extends Nameable
 
 class Accountant(name: Account) extends Actor with ActorLogging {
   val positions = mutable.Map[Contract, Int]().withDefaultValue(0)
-  val engine = context.system.actorSelection("/user/engine")
+  val engineRouter = context.system.actorSelection("/user/engine")
   val ledger = context.system.actorSelection("/user/ledger")
   val orderMap = mutable.Map[Int, Order]()
   val pendingPostings = mutable.Map[UUID, List[Posting]]()
@@ -46,7 +46,8 @@ class Accountant(name: Account) extends Actor with ActorLogging {
       val denominatedDirection = if (myOrder.side == BUY) DEBIT else CREDIT
       val payoutDirection = if (myOrder.side == BUY) CREDIT else DEBIT
       val userDenominatedPosting = Posting(myOrder.contract.denominated.get, name, t.quantity, denominatedDirection)
-      val userPayoutPosting = Posting(myOrder.contract.payout.get, name, spent, payoutDirection)
+      val userPayoutPosting =
+        Posting(myOrder.contract.payout.get, name, spent, payoutDirection)
       val uuid: UUID = t.uuid
       post(NewPosting(4, userDenominatedPosting, uuid))
       post(NewPosting(4, userPayoutPosting, uuid))
@@ -60,10 +61,11 @@ class Accountant(name: Account) extends Actor with ActorLogging {
     case OrderUpdate(o) =>
       log.info(s"OrderUpdate($o)")
       orderMap(o.id) = o
+
     case PlaceOrder(o) =>
       log.info(s"PlaceOrder($o)")
       if (checkMargin(o)) {
-        val result = engine ask PlaceOrder(o)
+        val result = engineRouter ask PlaceOrder(o)
       }
       else {
         throw new AccountantException("Insufficient Margin")
