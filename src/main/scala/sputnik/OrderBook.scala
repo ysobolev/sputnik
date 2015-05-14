@@ -27,7 +27,7 @@ class OrderBook(bids: SortedSet[Order], asks: SortedSet[Order]) {
       * @return
       */
     def doMatch(order: Order, orders: List[Order], fills: List[Trade], book: SortedSet[Order]): (Order, List[Order], List[Trade], SortedSet[Order]) = {
-      if (order.isExhausted || matchBook.isEmpty)
+      if (order.isExhausted || book.isEmpty)
         (order, orders, fills, book)
       else {
         /** Match two orders against each other

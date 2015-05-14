@@ -1,31 +1,21 @@
 package sputnik
 
 import akka.actor.{Actor, ActorLogging, ActorRef, Props}
+import akka.event.LoggingReceive
 import sputnik.TradeSide._
 
-
-import scala.collection.mutable
-
-abstract class AccountantRouterMsg
-case class TradeNotify(trade: Trade, side: TradeSide = MAKER) extends AccountantRouterMsg
-case class OrderUpdate(order: Order) extends AccountantRouterMsg
-
 class AccountantRouter extends Actor with ActorLogging with GetOrCreateChild {
-  def childFactory(c: Contract) = new Engine(c)
-  def getOrCreateChild = super.getOrCreateChild[Account, Accountant]((a) => new Accountant(a))_
+  implicit def childFactory(account: Account): Props = Accountant.props(account)
 
-  def receive = {
-    case TradeNotify(trade, _) =>
-      log.info("TradeNotify(" + trade + ")")
+  def receive = LoggingReceive {
+    case Accountant.TradeNotify(trade, _) =>
       trade match {
-        case trade @ Trade(aggressive, passive, _, _) =>
-          this.getOrCreateChild(aggressive.user) ! TradeNotify(trade, TAKER)
-          this.getOrCreateChild(passive.user) ! TradeNotify(trade, MAKER)
+        case trade @ Trade(aggressive: Order, passive: Order, _, _) =>
+          getOrCreateChild(aggressive.account) ! Accountant.TradeNotify(trade, TAKER)
+          getOrCreateChild(passive.account) ! Accountant.TradeNotify(trade, MAKER)
       }
-
-    case OrderUpdate(order) =>
-      log.info("OrderUpdate(" + order + ")")
-      this.getOrCreateChild(order.user) ! OrderUpdate(order)
-  }
+    case Accountant.PlaceOrder(order) =>
+      getOrCreateChild(order.account) ! Accountant.PlaceOrder(order)
+}
 
 }

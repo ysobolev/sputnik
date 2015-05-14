@@ -3,6 +3,7 @@ package sputnik
 import java.util.UUID
 
 import akka.actor.{ActorLogging, Props, Actor, ActorRef}
+import akka.event.LoggingReceive
 import com.github.nscala_time.time.Imports._
 import sputnik._
 import sputnik.LedgerDirection._
@@ -12,64 +13,58 @@ import scala.collection.mutable
 
 class LedgerException(x: String) extends Exception(x)
 
-abstract class LedgerMessage
+object Ledger {
+  case class NewPosting(count: Int, posting: Posting, uuid: UUID)
 
-case class NewPosting(count: Int, posting: Posting, uuid: UUID) extends LedgerMessage
-case class AddPosting(count: Int, posting: Posting) extends LedgerMessage
-case class PostingResult(uuid: UUID, result: Boolean) extends LedgerMessage
-case class GetBalances(account: Account) extends LedgerMessage
-case class NewJournal(uuid: UUID, journal: Journal) extends LedgerMessage
+  case class GetBalances(account: Account)
 
-case class Posting(contract: Contract, user: Account, quantity: Quantity, direction: LedgerDirection) {
-  val timestamp = DateTime.now
-
-  lazy val sign = {
-    val user_sign = user match {
-      case Account(_, ASSET) => 1
-      case Account(_, LIABILITY) => -1
-    }
-    val dir_sign = direction match {
-      case DEBIT => 1
-      case CREDIT => -1
-    }
-    user_sign * dir_sign
-  }
-  lazy val signedQuantity = sign * quantity
+  case class NewJournal(uuid: UUID, journal: Journal)
 }
 
-class PostingGroup(uuid: UUID, count: Int, var postings: List[Posting])
-  extends Actor with ActorLogging {
-  def add(count: Int, posting: Posting): Unit = {
-    if (count != this.count)
-      throw new LedgerException("count mismatch")
-    else {
-      postings = posting :: postings
-    }
-  }
+object PostingGroup {
+  case class AddPosting(count: Int, posting: Posting)
 
-  def ready: Boolean = postings.size == count
+  def props(uuid: UUID, count: Int): Props = Props(new PostingGroup(uuid, count))
 
-  def toJournal(typ: String): Journal = {
+}
+
+class PostingGroup(uuid: UUID, count: Int) extends Actor with ActorLogging {
+
+  def state(postings: List[Posting]): Receive = {
     if (ready) {
-      val journal = new Journal(typ, postings)
-      if (!journal.audit)
-        throw new LedgerException("Journal fails audit")
-      journal
+      context.parent ! Ledger.NewJournal(uuid, toJournal(""))
+      val accountants = postings.map(_.user.name).toSet[String].map(a => context.system.actorSelection("/user/accountant/" + a))
+      accountants.foreach(_ ! Accountant.PostingResult(uuid, result = true))
     }
-    else
-      throw new LedgerException("Postings not ready")
+
+    def add(count: Int, posting: Posting): List[Posting] = {
+      if (count != this.count)
+        throw new LedgerException("count mismatch")
+      else {
+        posting :: postings
+      }
+    }
+
+    def ready: Boolean = postings.size == count
+
+    def toJournal(typ: String): Journal = {
+      if (ready) {
+        val journal = new Journal(typ, postings)
+        if (!journal.audit)
+          throw new LedgerException("Journal fails audit")
+        journal
+      }
+      else
+        throw new LedgerException("Postings not ready")
+    }
+    LoggingReceive {
+      case PostingGroup.AddPosting(c, p) =>
+        context.become(state(add(c, p)))
+    }
   }
 
-  def receive = {
-    case AddPosting(c, p) =>
-      log.info(s"AddPosting($c, $p")
-      add(c, p)
-      if (ready) {
-        context.parent ! NewJournal(uuid, toJournal(""))
-        val accountants = postings.map(_.user.name).toSet[String].map(a => context.system.actorSelection("/user/accountant/" + a))
-        accountants.foreach(_ ! PostingResult(uuid, result = true))
-      }
-  }
+  val receive = state(List())
+
 }
 
 case class Journal(typ: String, postings: List[Posting]) {
@@ -79,37 +74,31 @@ case class Journal(typ: String, postings: List[Posting]) {
 }
 
 class Ledger extends Actor with ActorLogging {
-  var ledger = List[Journal]()
-  val pending = mutable.Map[UUID, ActorRef]()
+  val receive = state(List(), Map())
 
-  def getBalances(user: Account, timestamp: DateTime = DateTime.now): Map[Contract, Quantity] = {
-    val quantities = for {
-      entry <- ledger
-      posting@Posting(contract, user, _, _) <- entry.postings
-      if entry.timestamp <= timestamp
-    } yield (contract, posting.signedQuantity)
-    quantities.groupBy[Contract](_._1).mapValues(_.map(_._2).sum)
-  }
+  def state(ledger: List[Journal], pending: Map[UUID, ActorRef]): Receive = {
+    def getBalances(user: Account, timestamp: DateTime = DateTime.now): Positions = {
+      val quantities = for {
+        entry <- ledger
+        posting@Posting(contract, user, _, _) <- entry.postings
+        if entry.timestamp <= timestamp
+      } yield (contract, posting.signedQuantity)
+      quantities.groupBy[Contract](_._1).mapValues(_.map(_._2).sum)
+    }
 
-  def receive = {
-    case NewPosting(count, posting, uuid) =>
-      val currentSender = sender()
-      log.info(s"NewPosting($count, $posting, $uuid")
-      if (!pending.contains(uuid))
-        pending(uuid) = context.actorOf(Props(new PostingGroup(uuid, count, List())), name = uuid.toString)
+    LoggingReceive {
+      case Ledger.NewPosting(count, posting, uuid) =>
+        val currentSender = sender()
+        val newPending = if (!pending.contains(uuid)) pending + ((uuid, context.actorOf(PostingGroup.props(uuid, count), name = uuid.toString))) else pending
+        newPending(uuid) ! PostingGroup.AddPosting(count, posting)
+        context.become(state(ledger, newPending))
 
-      pending(uuid) ! AddPosting(count, posting)
+      case Ledger.GetBalances(user) =>
+        sender ! Accountant.PositionsMsg(getBalances(user))
 
-    case GetBalances(user) =>
-      log.info(s"GetBalances($user)")
-      sender ! getBalances(user)
-
-    case NewJournal(uuid, journal) =>
-      log.info(s"NewJournal($uuid, $journal)")
-      ledger = journal :: ledger
-      pending(uuid)
-      context.stop(pending(uuid))
-      pending -= uuid
+      case Ledger.NewJournal(uuid, journal) =>
+        context.become(state(journal :: ledger, pending - uuid))
+    }
   }
 }
 

@@ -5,16 +5,15 @@ import scala.collection.mutable
 
 
 class EngineRouter extends Actor with ActorLogging with GetOrCreateChild {
-  def childFactory(c: Contract) = new Engine(c)
-  def getOrCreateChild = super.getOrCreateChild[Contract, Engine]((c) => new Engine(c))_
+  implicit def childFactory(c: Contract): Props = Engine.props(c)
 
   def receive = {
-    case PlaceOrder(order) =>
+    case Engine.PlaceOrder(order) =>
       log.info(s"PlaceOrder($order)")
-      this.getOrCreateChild(order.contract) ! PlaceOrder(order)
+      getOrCreateChild(order.contract) ! Engine.PlaceOrder(order)
 
-    case CancelOrder(contract, id) =>
+    case Engine.CancelOrder(contract, id) =>
       log.info(s"CancelOrder($contract, $id)")
-      this.getOrCreateChild(contract) ! CancelOrder(contract, id)
+      getOrCreateChild(contract) ! Engine.CancelOrder(contract, id)
   }
 }

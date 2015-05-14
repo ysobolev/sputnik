@@ -1,5 +1,4 @@
 package sputnik
-import sputnik._
 import com.github.nscala_time.time.Imports._
 import java.util.UUID
 
