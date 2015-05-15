@@ -14,12 +14,19 @@ class AccountantException(x: String) extends Exception(x)
 
 object Accountant
 {
+  type PostingMap = Map[UUID, List[Posting]]
+  type OrderMap = Map[Int, Order]
+  type TradeMap = Map[UUID, List[(Trade, Order)]]
+  type SafePriceMap = Map[Contract, Price]
+
   case class PlaceOrder(order: Order)
   case class TradeNotify(trade: Trade, side: TradeSide = MAKER)
   case class OrderUpdate(order: Order)
   case class PostingResult(uuid: UUID, result: Boolean)
   case class PositionsMsg(positions: Positions)
   case class GetPositions(account: Account)
+  case class UpdateSafePrice(contract: Contract, safePrice: Price)
+  case class UpdateSafePriceMap(safePrices: SafePriceMap)
 
   def props(name: Account): Props = Props(new Accountant(name))
 }
@@ -29,9 +36,6 @@ class Accountant(name: Account) extends Actor with ActorLogging with Stash {
   val engineRouter = context.system.actorSelection("/user/engine")
   val ledger = context.system.actorSelection("/user/ledger")
 
-  type PostingMap = Map[UUID, List[Posting]]
-  type OrderMap = Map[Int, Order]
-  type TradeMap = Map[UUID, List[(Trade, Order)]]
 
   ledger ! Ledger.GetPositions(name)
 
@@ -40,15 +44,76 @@ class Accountant(name: Account) extends Actor with ActorLogging with Stash {
   val initializing: Receive = LoggingReceive {
     case Accountant.PositionsMsg(positions) =>
       unstashAll()
-      context.become(trading(positions, Map.empty, Map.empty, Map.empty))
+      context.become(trading(positions, Map.empty, Map.empty, Map.empty, Map.empty))
     case msg =>
       stash()
   }
 
-  def trading(positions: Positions, pendingPostings: PostingMap, pendingTrades: TradeMap, orderMap: OrderMap): Receive = {
-    def checkMargin(order: Order) = true
+  def trading(positions: Positions,
+              pendingPostings: Accountant.PostingMap,
+              pendingTrades: Accountant.TradeMap,
+              orderMap: Accountant.OrderMap,
+              safePrices: Accountant.SafePriceMap): Receive = {
+    def calculateMargin(order: Order, positionOverrides: Positions = Map(), cashOverrides: Positions = Map()) = {
+      val usePositions = (positions ++ positionOverrides).withDefault(x => 0)
+      val useOrders = (orderMap + ((order.id, order))).values
+      val cashPositions = (usePositions.filter(x => x._1.contractType == ContractType.CASH) ++ cashOverrides).withDefault(x => 0)
 
-    def post(pendingPostings: PostingMap, posting: Ledger.NewPosting): PostingMap = {
+      def marginForContract(contract: Contract): (Quantity, Quantity) = {
+        val maxPosition = usePositions(contract) +
+          useOrders.filter(order => order.side == BUY && order.contract == contract).map(_.quantity).sum
+
+        val minPosition = usePositions(contract) -
+          useOrders.filter(order => order.side == SELL && order.contract == contract).map(_.quantity).sum
+
+        val maxSpent =
+          useOrders.filter(order => order.side == BUY && order.contract == contract).map(x => contract.getCashSpent(x.price, x.quantity)).sum
+
+        val maxReceived =
+          useOrders.filter(order => order.side == SELL && order.contract == contract).map(x => contract.getCashSpent(x.price, x.quantity)).sum
+
+        contract.contractType match {
+          case ContractType.FUTURES => throw new NotImplementedError("Futures not yet implemented. Need safe & reference prices")
+          case ContractType.PREDICTION =>
+            val payOff = contract.lotSize
+            val worstShortCover = if (minPosition < 0) -minPosition * payOff else 0
+            val bestShortCover = if (maxPosition < 0) -maxPosition * payOff else 0
+            (maxSpent + bestShortCover, -maxReceived + worstShortCover)
+          case _ =>
+            (0, 0)
+        }
+      }
+      val marginsForContracts = usePositions.keys.map(marginForContract).foldLeft((0, 0))((x, y) => (x._1 + y._1, x._2 + y._2))
+
+      val cashPairOrders = useOrders.filter(x => x.contract.contractType == ContractType.CASH_PAIR)
+      val maxCashSpent = cashPairOrders.map(x =>
+        if (x.side == BUY)
+          (x.contract.denominated, x.contract.getCashSpent(x.price, x.quantity))
+        else
+          (x.contract.payout, x.quantity))
+      val maxCashSpentFn = maxCashSpent.foldLeft(Map[Contract, Quantity]().withDefault(x => 0))_
+      val maxCashSpentMap = maxCashSpentFn {
+        case (map: Map[Contract, Quantity], tuple: (Option[Contract], Quantity)) =>
+          map + ((tuple._1.get, map(tuple._1.get) + tuple._2))
+      }
+      (marginsForContracts._1, marginsForContracts._2, maxCashSpentMap)
+
+    }
+
+    def checkMargin(order: Order) = {
+      val (lowMargin, highMargin, maxCashSpent) = calculateMargin(order)
+      if (!positions.forall { case (c: Contract, q: Quantity) => q > maxCashSpent.withDefault(x => 0)(c) })
+        false
+      else {
+        val btcPosition = positions.find { case (c: Contract, _) => c.ticker == "BTC" } match {
+          case Some((_, q: Quantity)) => q
+          case None => 0
+        }
+        btcPosition >= highMargin
+      }
+    }
+
+    def post(pendingPostings: Accountant.PostingMap, posting: Ledger.NewPosting): Accountant.PostingMap = {
       ledger ! posting
       pendingPostings + ((posting.uuid, posting.posting :: pendingPostings.getOrElse(posting.uuid, List[Posting]())))
     }
@@ -66,7 +131,7 @@ class Accountant(name: Account) extends Actor with ActorLogging with Stash {
 
         val newPendingPostings = List(Ledger.NewPosting(4, userDenominatedPosting, uuid), Ledger.NewPosting(4, userPayoutPosting, uuid)).foldLeft(pendingPostings)(post)
         val newPendingTrades = pendingTrades + ((uuid, (t, myOrder) :: pendingTrades.getOrElse(uuid, List[(Trade, Order)]())))
-        context.become(trading(positions, newPendingPostings, newPendingTrades, orderMap))
+        context.become(trading(positions, newPendingPostings, newPendingTrades, orderMap, safePrices))
 
       case Accountant.PostingResult(uuid, true) =>
         val pendingForUuid = pendingPostings.getOrElse(uuid, List())
@@ -80,7 +145,7 @@ class Accountant(name: Account) extends Actor with ActorLogging with Stash {
         val newPositions = positionChanges.foldLeft(positions)(modifyPositions)
         val newPendingPostings = pendingPostings - uuid
 
-        def updateOrderMap(orderMap: OrderMap, x: (Trade, Order)): OrderMap = {
+        def updateOrderMap(orderMap: Accountant.OrderMap, x: (Trade, Order)): Accountant.OrderMap = {
           val (trade, order) = x
           val oldOrder = orderMap(order.id)
 
@@ -94,16 +159,23 @@ class Accountant(name: Account) extends Actor with ActorLogging with Stash {
         val newOrderMap = pendingTrades.getOrElse(uuid, List()).foldLeft(orderMap)(updateOrderMap)
         val newPendingTrades = pendingTrades - uuid
 
-        context.become(trading(newPositions, newPendingPostings, newPendingTrades, newOrderMap))
+        context.become(trading(newPositions, newPendingPostings, newPendingTrades, newOrderMap, safePrices))
 
       case Accountant.PlaceOrder(o) =>
         if (checkMargin(o)) {
           engineRouter ! Engine.PlaceOrder(o)
-          context.become(trading(positions, pendingPostings, pendingTrades, orderMap + ((o.id, o))))
+          context.become(trading(positions, pendingPostings, pendingTrades, orderMap + ((o.id, o)), safePrices))
         }
+        else
+          sender() ! Status.Failure(new AccountantException("insufficient_margin"))
+
       case Accountant.GetPositions(account) =>
         require(account == name)
         sender ! Accountant.PositionsMsg(positions)
+      case Accountant.UpdateSafePrice(contract, price) =>
+        context.become(trading(positions, pendingPostings, pendingTrades, orderMap, safePrices + (contract -> price)))
+      case Accountant.UpdateSafePriceMap(safePriceMap) =>
+        context.become(trading(positions, pendingPostings, pendingTrades, orderMap, safePriceMap))
     }
   }
 }
