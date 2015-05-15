@@ -1,4 +1,9 @@
-import akka.actor.ActorLogging
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+import java.util.UUID
+
 import com.github.nscala_time.time.Imports._
 
 package object sputnik {
@@ -95,4 +100,10 @@ package object sputnik {
     }
     lazy val signedQuantity = sign * quantity
   }
+
+  case class Trade(aggressiveOrder: Order, passiveOrder: Order, quantity: Quantity, price: Price) {
+    val timestamp = DateTime.now
+    val uuid = UUID.randomUUID()
+  }
+
 }
