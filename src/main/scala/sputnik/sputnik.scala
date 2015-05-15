@@ -1,3 +1,4 @@
+import akka.actor.ActorLogging
 import com.github.nscala_time.time.Imports._
 
 package object sputnik {
@@ -44,17 +45,41 @@ package object sputnik {
       case _ => if (payout.isEmpty || denominated.isEmpty) throw new Exception("Can't create non-CASH without denominated and payout")
     }
 
-    def getCashSpent(price: Int, quantity: Int): Int = {
+    def getCashSpent(price: Price, quantity: Quantity): Quantity = {
+      val pBig: BigInt = price
+      val qBig: BigInt = quantity
       contractType match {
-        case ContractType.CASH_PAIR => quantity * price / (denominator * payout.get.denominator)
-        case _ => quantity * price * lotSize / denominator
+        case ContractType.CASH_PAIR => (qBig * pBig / (denominator * payout.get.denominator)).toInt
+        case _ => (qBig * pBig * lotSize / denominator).toInt
       }
     }
+
+    def priceToWire(price: BigDecimal): Price = {
+      val p = contractType match {
+        case ContractType.CASH_PAIR => price * denominated.get.denominator * denominator
+        case _ => price * denominator
+      }
+      (p - p % tickSize).toInt
+    }
+
+    def quantityToWire(quantity: BigDecimal): Quantity = {
+      val p = contractType match {
+        case ContractType.CASH => quantity * denominator
+        case ContractType.FUTURES => quantity
+        case ContractType.PREDICTION => quantity
+        case ContractType.CASH_PAIR =>
+          val q = quantity * payout.get.denominator
+          q - q % lotSize
+      }
+      p.toInt
+    }
+
     val name = ticker.replace("/", "")
   }
 
 
   case class Posting(contract: Contract, user: Account, quantity: Quantity, direction: LedgerDirection.LedgerDirection) {
+    require(contract.contractType != ContractType.CASH_PAIR)
     val timestamp = DateTime.now
 
     lazy val sign = {

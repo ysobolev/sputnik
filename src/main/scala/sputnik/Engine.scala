@@ -2,9 +2,12 @@ package sputnik
 
 import akka.actor.{Actor, ActorLogging, ActorSystem, Props}
 import akka.event.LoggingReceive
+import akka.pattern._
+import akka.util.Timeout
 import com.github.nscala_time.time.Imports._
 import sputnik.BookSide._
 import sputnik.ContractType._
+import scala.concurrent.ExecutionContext.Implicits.global
 
 object Engine {
   case class PlaceOrder(order: Order)
@@ -44,14 +47,22 @@ class Engine(contract: Contract) extends Actor with ActorLogging {
 
 object Test extends App {
   val system = ActorSystem("sputnik")
-  val btc = Contract("BTC", None, None, 1000000, 100000, 100000000, CASH)
-  val usd = Contract("USD", None, None, 10000, 100, 1000000, CASH)
-  val btcusd = Contract("BTC/USD", Some(usd), Some(btc), 100, 1000000, 1, CASH_PAIR)
+  val btc = Contract("BTC", None, None, tickSize = 1000000, lotSize = 100000, denominator = 100000000, CASH)
+  val usd = Contract("USD", None, None, tickSize = 10000, lotSize = 100, denominator = 1000000, CASH)
+  val btcusd = Contract("BTC/USD", Some(usd), Some(btc), tickSize = 100, lotSize = 1000000, 1, CASH_PAIR)
   val engineRouter = system.actorOf(Props[EngineRouter], name = "engine")
   val accountantRouter = system.actorOf(Props[AccountantRouter], name = "accountant")
   val ledger = system.actorOf(Props[Ledger], name = "ledger")
-  accountantRouter ! Accountant.PlaceOrder(Order(1, 100, 100, DateTime.now, BUY, Account("testA"), btcusd))
-  accountantRouter ! Accountant.PlaceOrder(Order(2, 100, 50, DateTime.now, BUY, Account("testB"), btcusd))
-  accountantRouter ! Accountant.PlaceOrder(Order(3, 50, 75, DateTime.now, SELL, Account("testC"), btcusd))
+  accountantRouter ! Accountant.PlaceOrder(Order(1, btcusd.quantityToWire(1), btcusd.priceToWire(200), DateTime.now, BUY, Account("testA"), btcusd))
+  accountantRouter ! Accountant.PlaceOrder(Order(2, btcusd.quantityToWire(1), btcusd.priceToWire(100), DateTime.now, BUY, Account("testB"), btcusd))
+  accountantRouter ! Accountant.PlaceOrder(Order(3, btcusd.quantityToWire(0.5), btcusd.priceToWire(150), DateTime.now, SELL, Account("testC"), btcusd))
+  import java.util.concurrent.TimeUnit
+  implicit val timeout = Timeout(5, TimeUnit.SECONDS)
+  Thread.sleep(1000)
+  val positions = accountantRouter ? Accountant.GetPositions(Account("testA"))
+  positions.mapTo[Accountant.PositionsMsg].foreach(println)
+
+  val positions2 = accountantRouter ? Accountant.GetPositions(Account("testC"))
+  positions2.mapTo[Accountant.PositionsMsg].foreach(println)
   //system.shutdown()
 }

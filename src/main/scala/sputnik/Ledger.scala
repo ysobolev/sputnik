@@ -16,7 +16,7 @@ class LedgerException(x: String) extends Exception(x)
 object Ledger {
   case class NewPosting(count: Int, posting: Posting, uuid: UUID)
 
-  case class GetBalances(account: Account)
+  case class GetPositions(account: Account)
 
   case class NewJournal(uuid: UUID, journal: Journal)
 }
@@ -93,7 +93,7 @@ class Ledger extends Actor with ActorLogging {
         newPending(uuid) ! PostingGroup.AddPosting(count, posting)
         context.become(state(ledger, newPending))
 
-      case Ledger.GetBalances(user) =>
+      case Ledger.GetPositions(user) =>
         sender ! Accountant.PositionsMsg(getBalances(user))
 
       case Ledger.NewJournal(uuid, journal) =>

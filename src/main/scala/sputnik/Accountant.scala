@@ -19,6 +19,7 @@ object Accountant
   case class OrderUpdate(order: Order)
   case class PostingResult(uuid: UUID, result: Boolean)
   case class PositionsMsg(positions: Positions)
+  case class GetPositions(account: Account)
 
   def props(name: Account): Props = Props(new Accountant(name))
 }
@@ -32,7 +33,7 @@ class Accountant(name: Account) extends Actor with ActorLogging with Stash {
   type OrderMap = Map[Int, Order]
   type TradeMap = Map[UUID, List[(Trade, Order)]]
 
-  ledger ! Ledger.GetBalances(name)
+  ledger ! Ledger.GetPositions(name)
 
   def receive: Receive = initializing
 
@@ -100,6 +101,9 @@ class Accountant(name: Account) extends Actor with ActorLogging with Stash {
           engineRouter ! Engine.PlaceOrder(o)
           context.become(trading(positions, pendingPostings, pendingTrades, orderMap + ((o.id, o))))
         }
+      case Accountant.GetPositions(account) =>
+        require(account == name)
+        sender ! Accountant.PositionsMsg(positions)
     }
   }
 }
