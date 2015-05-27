@@ -61,7 +61,7 @@ class Accountant(name: Account) extends Actor with ActorLogging with Stash {
     def calculateMargin(order: Order, positionOverrides: Positions = Map(), cashOverrides: Positions = Map()) = {
       val usePositions = (positions ++ positionOverrides).withDefault(x => 0)
       val useOrders = (orderMap + ((order.id, order))).values
-      val cashPositions = (usePositions.filter(x => x._1.contractType == ContractType.CASH) ++ cashOverrides).withDefault(x => 0)
+      val cashPositions = (usePositions.filter(x => x._1.contractType == ContractType.CASH) ++ cashOverrides).withDefaultValue(0)
 
       def marginForContract(contract: Contract): (Quantity, Quantity) = {
         val maxPosition = usePositions(contract) +
@@ -95,7 +95,7 @@ class Accountant(name: Account) extends Actor with ActorLogging with Stash {
           (x.contract.denominated, x.contract.getCashSpent(x.price, x.quantity))
         else
           (x.contract.payout, x.quantity))
-      val maxCashSpentFn = maxCashSpent.foldLeft(Map[Contract, Quantity]().withDefault(x => 0))_
+      val maxCashSpentFn = maxCashSpent.foldLeft(Map[Contract, Quantity]().withDefaultValue(0))_
       val maxCashSpentMap = maxCashSpentFn {
         case (map: Map[Contract, Quantity], tuple: (Option[Contract], Quantity)) =>
           map + ((tuple._1.get, map(tuple._1.get) + tuple._2))
@@ -106,7 +106,7 @@ class Accountant(name: Account) extends Actor with ActorLogging with Stash {
 
     def checkMargin(order: Order) = {
       val (lowMargin, highMargin, maxCashSpent) = calculateMargin(order)
-      if (!positions.forall { case (c: Contract, q: Quantity) => q > maxCashSpent.withDefault(x => 0)(c) })
+      if (!positions.forall { case (c: Contract, q: Quantity) => q > maxCashSpent.withDefaultValue(0)(c) })
         false
       else {
         val btcPosition = positions.find { case (c: Contract, _) => c.ticker == "BTC" } match {
