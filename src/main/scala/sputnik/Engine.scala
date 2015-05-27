@@ -8,6 +8,8 @@ import akka.event.LoggingReceive
 import akka.pattern._
 import akka.util.Timeout
 import com.github.nscala_time.time.Imports._
+import com.mongodb.casbah.Imports._
+import com.mongodb.casbah.commons.conversions.scala.RegisterJodaTimeConversionHelpers
 import sputnik.BookSide._
 import sputnik.ContractType._
 import scala.concurrent.ExecutionContext.Implicits.global
@@ -49,6 +51,7 @@ class Engine(contract: Contract) extends Actor with ActorLogging {
 }
 
 object Test extends App {
+  RegisterJodaTimeConversionHelpers()
   val system = ActorSystem("sputnik")
   val btc = Contract("BTC", None, None, tickSize = 1000000, lotSize = 100000, denominator = 100000000, CASH)
   val usd = Contract("USD", None, None, tickSize = 10000, lotSize = 100, denominator = 1000000, CASH)
@@ -56,7 +59,8 @@ object Test extends App {
   val engineRouter = system.actorOf(Props[EngineRouter], name = "engine")
   val accountantRouter = system.actorOf(Props[AccountantRouter], name = "accountant")
   val ledger = system.actorOf(Props[Ledger], name = "ledger")
-  accountantRouter ! Accountant.PlaceOrder(Order(1, btcusd.quantityToWire(1), btcusd.priceToWire(200), DateTime.now, BUY, Account("testA"), btcusd))
+  val o1 = Order(1, btcusd.quantityToWire(1), btcusd.priceToWire(200), DateTime.now, BUY, Account("testA"), btcusd)
+  accountantRouter ! Accountant.PlaceOrder(o1)
   accountantRouter ! Accountant.PlaceOrder(Order(2, btcusd.quantityToWire(1), btcusd.priceToWire(100), DateTime.now, BUY, Account("testB"), btcusd))
   accountantRouter ! Accountant.PlaceOrder(Order(3, btcusd.quantityToWire(0.5), btcusd.priceToWire(150), DateTime.now, SELL, Account("testC"), btcusd))
   import java.util.concurrent.TimeUnit
@@ -67,5 +71,14 @@ object Test extends App {
 
   val positions2 = accountantRouter ? Accountant.GetPositions(Account("testC"))
   positions2.mapTo[Accountant.PositionsMsg].foreach(println)
+  println(BUY.toString)
   //system.shutdown()
+  val dbObj = o1.toMongo
+  println(dbObj)
+  val ordersColl = MongoFactory.database("orders")
+  ordersColl.insert(dbObj)
+
+  val oR = ordersColl.findOne().get
+  val o = Order.fromMongo(oR)
+  println(o)
 }

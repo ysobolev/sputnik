@@ -37,7 +37,7 @@ class PostingGroup(uuid: UUID, count: Int) extends Actor with ActorLogging {
   def state(postings: List[Posting]): Receive = {
     if (ready) {
       context.parent ! Ledger.NewJournal(uuid, toJournal(""))
-      val accountants = postings.map(_.user.name).toSet[String].map(a => context.system.actorSelection("/user/accountant/" + a))
+      val accountants = postings.map(_.account.name).toSet[String].map(a => context.system.actorSelection("/user/accountant/" + a))
       accountants.foreach(_ ! Accountant.PostingResult(uuid, result = true))
     }
 
@@ -71,11 +71,6 @@ class PostingGroup(uuid: UUID, count: Int) extends Actor with ActorLogging {
 
 }
 
-case class Journal(typ: String, postings: List[Posting]) {
-  val timestamp = DateTime.now
-
-  def audit: Boolean = postings.groupBy(_.contract).forall(_._2.map(_.signedQuantity).sum == 0)
-}
 
 class Ledger extends Actor with ActorLogging {
   val receive = state(List(), Map())
@@ -84,7 +79,7 @@ class Ledger extends Actor with ActorLogging {
     def getBalances(user: Account, timestamp: DateTime = DateTime.now): Positions = {
       val quantities = for {
         entry <- ledger
-        posting@Posting(contract, user, _, _) <- entry.postings
+        posting@Posting(contract, user, _, _, _) <- entry.postings
         if entry.timestamp <= timestamp
       } yield (contract, posting.signedQuantity)
       quantities.groupBy[Contract](_._1).mapValues(_.map(_._2).sum)
