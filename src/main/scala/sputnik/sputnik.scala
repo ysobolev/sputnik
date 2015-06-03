@@ -7,6 +7,7 @@ import java.util.UUID
 import com.github.nscala_time.time.Imports._
 import com.mongodb.DBObject
 import com.mongodb.casbah.commons.MongoDBObject
+import org.bson.types.ObjectId
 
 package object sputnik {
   type Quantity = Int
@@ -184,17 +185,17 @@ package object sputnik {
 
   object Order {
     def fromMongo(o: MongoDBObject) = Order(
-      o.as[Int]("_id"),
       o.as[Quantity]("quantity"),
       o.as[Price]("price"),
       o.as[DateTime]("timestamp"),
       BookSide withName o.as[String]("side"),
       Account.fromMongo(o.as[MongoDBObject]("account")),
-      Contract.fromMongo(o.as[MongoDBObject]("contract"))
+      Contract.fromMongo(o.as[MongoDBObject]("contract")),
+      o.as[ObjectId]("_id")
     )
   }
 
-  case class Order(id: Int, quantity: Quantity, price: Price, timestamp: DateTime, side: BookSide.BookSide, account: Account, contract: Contract) extends Ordered[Order] {
+  case class Order(quantity: Quantity, price: Price, timestamp: DateTime, side: BookSide.BookSide, account: Account, contract: Contract, _id: ObjectId = new ObjectId()) extends Ordered[Order] {
 
     private val sign = if (side == BookSide.BUY) -1 else 1
 
@@ -203,7 +204,7 @@ package object sputnik {
     def isExhausted: Boolean = quantity == 0
 
     def toMongo: DBObject = MongoDBObject(
-      "_id" -> id,
+      "_id" -> _id,
       "quantity" -> quantity,
       "price" -> price,
       "timestamp" -> timestamp,
@@ -214,11 +215,14 @@ package object sputnik {
 
     /** Price-Time ordering */
 
-    import scala.math.Ordered.orderingToOrdered
-
     def compare(that: Order): Int =
-      if (this.side == that.side)
-        (sign * this.price, this.timestamp) compare(that.sign * that.price, that.timestamp)
+      if (this.side == that.side) {
+        val priceCompare = (this.sign * this.price) compare (that.sign * that.price)
+        if (priceCompare == 0)
+          this.timestamp compare that.timestamp
+        else
+          priceCompare
+      }
       else
         throw new OrderException("can't compare buy and sell")
 

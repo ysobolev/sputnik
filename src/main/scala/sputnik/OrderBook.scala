@@ -4,6 +4,7 @@
 
 package sputnik
 
+import org.bson.types.ObjectId
 import sputnik.BookSide._
 
 import scala.collection.SortedSet
@@ -69,8 +70,8 @@ class OrderBook(bids: SortedSet[Order], asks: SortedSet[Order]) {
     val newMyBook = if (!newOrder.isExhausted) myBook + newOrder else myBook
     (if (order.side == BUY) new OrderBook(newMyBook, newBook) else new OrderBook(newBook, newMyBook), (newOrder :: orders).reverse, fills.reverse)
   }
-  def getOrderById(id: Int): Option[Order] = (bids ++ asks).find(_.id == id)
-  def cancelOrder(id: Int): OrderBook = new OrderBook(bids.filter(_.id != id), asks.filter(_.id != id))
+  def getOrderById(id: ObjectId): Option[Order] = (bids ++ asks).find(_._id == id)
+  def cancelOrder(id: ObjectId): OrderBook = new OrderBook(bids.filter(_._id != id), asks.filter(_._id != id))
 
   override def toString =
     "OrderBook(Bids(" + bids + "), Asks(" + asks + "))"

@@ -8,6 +8,7 @@ import java.util.UUID
 
 import akka.actor._
 import akka.event.LoggingReceive
+import org.bson.types.ObjectId
 import sputnik.LedgerDirection._
 import sputnik.TradeSide._
 import sputnik.BookSide._
@@ -19,7 +20,7 @@ class AccountantException(x: String) extends Exception(x)
 object Accountant
 {
   type PostingMap = Map[UUID, List[Posting]]
-  type OrderMap = Map[Int, Order]
+  type OrderMap = Map[ObjectId, Order]
   type TradeMap = Map[UUID, List[(Trade, Order)]]
   type SafePriceMap = Map[Contract, Price]
 
@@ -60,7 +61,7 @@ class Accountant(name: Account) extends Actor with ActorLogging with Stash {
               safePrices: Accountant.SafePriceMap): Receive = {
     def calculateMargin(order: Order, positionOverrides: Positions = Map(), cashOverrides: Positions = Map()) = {
       val usePositions = (positions ++ positionOverrides).withDefault(x => 0)
-      val useOrders = (orderMap + ((order.id, order))).values
+      val useOrders = (orderMap + (order._id -> order)).values
       val cashPositions = (usePositions.filter(x => x._1.contractType == ContractType.CASH) ++ cashOverrides).withDefaultValue(0)
 
       def marginForContract(contract: Contract): (Quantity, Quantity) = {
@@ -151,14 +152,14 @@ class Accountant(name: Account) extends Actor with ActorLogging with Stash {
 
         def updateOrderMap(orderMap: Accountant.OrderMap, x: (Trade, Order)): Accountant.OrderMap = {
           val (trade, order) = x
-          val oldOrder = orderMap(order.id)
+          val oldOrder = orderMap(order._id)
 
           if (oldOrder.quantity > trade.quantity) {
             val newOrder = oldOrder.copy(quantity = oldOrder.quantity - trade.quantity)
-            orderMap + ((order.id, newOrder))
+            orderMap + (order._id -> newOrder)
           }
           else
-            orderMap - order.id
+            orderMap - order._id
         }
         val newOrderMap = pendingTrades.getOrElse(uuid, List()).foldLeft(orderMap)(updateOrderMap)
         val newPendingTrades = pendingTrades - uuid
@@ -168,7 +169,7 @@ class Accountant(name: Account) extends Actor with ActorLogging with Stash {
       case Accountant.PlaceOrder(o) =>
         if (checkMargin(o)) {
           engineRouter ! Engine.PlaceOrder(o)
-          context.become(trading(positions, pendingPostings, pendingTrades, orderMap + ((o.id, o)), safePrices))
+          context.become(trading(positions, pendingPostings, pendingTrades, orderMap + (o._id -> o), safePrices))
         }
         else
           sender() ! Status.Failure(new AccountantException("insufficient_margin"))

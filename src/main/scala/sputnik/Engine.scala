@@ -16,7 +16,7 @@ import scala.concurrent.ExecutionContext.Implicits.global
 
 object Engine {
   case class PlaceOrder(order: Order)
-  case class CancelOrder(contract: Contract, id: Int)
+  case class CancelOrder(contract: Contract, id: ObjectId)
 
   def props(contract: Contract): Props = Props(new Engine(contract))
 }
@@ -29,7 +29,6 @@ class Engine(contract: Contract) extends Actor with ActorLogging {
 
   def state(orderBook: OrderBook): Receive = LoggingReceive {
     case Engine.PlaceOrder(order) =>
-      log.info(s"PlaceOrder($order)")
       assert(order.contract == contract)
       val (newOrderBook, orders, trades) = orderBook.placeOrder(order)
 
@@ -37,7 +36,6 @@ class Engine(contract: Contract) extends Actor with ActorLogging {
       context.become(state(newOrderBook))
 
     case Engine.CancelOrder(c, id) =>
-      log.info(s"CancelOrder($id)")
       assert(c == contract)
       orderBook.getOrderById(id) match {
         case Some(order) =>
@@ -59,10 +57,10 @@ object Test extends App {
   val engineRouter = system.actorOf(Props[EngineRouter], name = "engine")
   val accountantRouter = system.actorOf(Props[AccountantRouter], name = "accountant")
   val ledger = system.actorOf(Props[Ledger], name = "ledger")
-  val o1 = Order(1, btcusd.quantityToWire(1), btcusd.priceToWire(200), DateTime.now, BUY, Account("testA"), btcusd)
+  val o1 = Order(btcusd.quantityToWire(1), btcusd.priceToWire(200), DateTime.now, BUY, Account("testA"), btcusd)
   accountantRouter ! Accountant.PlaceOrder(o1)
-  accountantRouter ! Accountant.PlaceOrder(Order(2, btcusd.quantityToWire(1), btcusd.priceToWire(100), DateTime.now, BUY, Account("testB"), btcusd))
-  accountantRouter ! Accountant.PlaceOrder(Order(3, btcusd.quantityToWire(0.5), btcusd.priceToWire(150), DateTime.now, SELL, Account("testC"), btcusd))
+  accountantRouter ! Accountant.PlaceOrder(Order(btcusd.quantityToWire(1), btcusd.priceToWire(100), DateTime.now, BUY, Account("testB"), btcusd))
+  accountantRouter ! Accountant.PlaceOrder(Order(btcusd.quantityToWire(0.5), btcusd.priceToWire(150), DateTime.now, SELL, Account("testC"), btcusd))
   import java.util.concurrent.TimeUnit
   implicit val timeout = Timeout(5, TimeUnit.SECONDS)
   Thread.sleep(1000)

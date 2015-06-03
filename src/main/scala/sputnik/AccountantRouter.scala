@@ -10,13 +10,13 @@ class AccountantRouter extends Actor with ActorLogging with GetOrCreateChild {
   def receive = LoggingReceive {
     case Accountant.TradeNotify(trade, _) =>
       trade match {
-        case trade@Trade(aggressive: Order, passive: Order, _, _) =>
-          getOrCreateChild(aggressive.account) ! Accountant.TradeNotify(trade, TAKER)
-          getOrCreateChild(passive.account) ! Accountant.TradeNotify(trade, MAKER)
+        case trade: Trade =>
+          getOrCreateChild(trade.aggressiveOrder.account) ! Accountant.TradeNotify(trade, TAKER)
+          getOrCreateChild(trade.passiveOrder.account) ! Accountant.TradeNotify(trade, MAKER)
       }
     case Accountant.PlaceOrder(order) =>
       getOrCreateChild(order.account) ! Accountant.PlaceOrder(order)
     case Accountant.GetPositions(account) =>
-      getOrCreateChild(account).tell(Accountant.GetPositions(account), sender)
+      getOrCreateChild(account).tell(Accountant.GetPositions(account), sender())
   }
 }
