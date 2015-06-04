@@ -31,7 +31,7 @@ class Engine(contract: Contract) extends Actor with ActorLogging {
     case Engine.PlaceOrder(order) =>
       assert(order.contract == contract)
       val (newOrderBook, orders, trades) = orderBook.placeOrder(order)
-
+      sender() ! Accountant.OrderBooked(order)
       trades.foreach((x) => accountantRouter ! Accountant.TradeNotify(x))
       context.become(state(newOrderBook))
 

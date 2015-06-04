@@ -192,12 +192,24 @@ package object sputnik {
         BookSide withName o.as[String]("side"),
         Account.fromMongo(o.as[MongoDBObject]("account")),
         Contract.fromMongo(o.as[MongoDBObject]("contract")),
-        o.as[ObjectId]("_id")
+        o.as[ObjectId]("_id"),
+        o.getAsOrElse[Boolean]("accepted", false),
+        o.getAsOrElse[Boolean]("booked", false),
+        o.getAsOrElse[Boolean]("cancelled", false)
       )
     }
   }
 
-  case class Order(quantity: Quantity, price: Price, timestamp: DateTime, side: BookSide.BookSide, account: Account, contract: Contract, _id: ObjectId = new ObjectId()) extends Ordered[Order] {
+  case class Order(quantity: Quantity,
+                   price: Price,
+                   timestamp: DateTime,
+                   side: BookSide.BookSide,
+                   account: Account,
+                   contract: Contract,
+                   _id: ObjectId = new ObjectId(),
+                   accepted: Boolean = false,
+                   booked: Boolean = false,
+                   cancelled: Boolean = false) extends Ordered[Order] {
     private val sign = if (side == BookSide.BUY) -1 else 1
 
     def matches(that: Order): Boolean = (this.side != that.side) && (sign * (this.price - that.price) <= 0)
@@ -211,7 +223,10 @@ package object sputnik {
       "timestamp" -> timestamp,
       "side" -> side.toString,
       "account" -> account.toMongo,
-      "contract" -> contract.toMongo
+      "contract" -> contract.toMongo,
+      "accepted" -> accepted,
+      "booked" -> booked,
+      "cancelled" -> cancelled
     )
 
     /** Price-Time ordering */

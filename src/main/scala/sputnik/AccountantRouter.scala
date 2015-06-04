@@ -15,7 +15,7 @@ class AccountantRouter extends Actor with ActorLogging with GetOrCreateChild {
           getOrCreateChild(trade.passiveOrder.account) ! Accountant.TradeNotify(trade, MAKER)
       }
     case Accountant.PlaceOrder(order) =>
-      getOrCreateChild(order.account) ! Accountant.PlaceOrder(order)
+      getOrCreateChild(order.account).tell(Accountant.PlaceOrder(order), sender())
     case Accountant.GetPositions(account) =>
       getOrCreateChild(account).tell(Accountant.GetPositions(account), sender())
   }

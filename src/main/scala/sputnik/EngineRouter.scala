@@ -10,10 +10,10 @@ class EngineRouter extends Actor with ActorLogging with GetOrCreateChild {
   def receive = {
     case Engine.PlaceOrder(order) =>
       log.info(s"PlaceOrder($order)")
-      getOrCreateChild(order.contract) ! Engine.PlaceOrder(order)
+      getOrCreateChild(order.contract).tell(Engine.PlaceOrder(order), sender())
 
     case Engine.CancelOrder(contract, id) =>
       log.info(s"CancelOrder($contract, $id)")
-      getOrCreateChild(contract) ! Engine.CancelOrder(contract, id)
+      getOrCreateChild(contract).tell(Engine.CancelOrder(contract, id), sender())
   }
 }

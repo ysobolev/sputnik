@@ -25,30 +25,32 @@ object Accountant
   type OrderActorMap = Map[ActorRef, ObjectId]
   type TradeMap = Map[UUID, List[(Trade, Order)]]
   type SafePriceMap = Map[Contract, Price]
-  abstract class AccountantMessage
 
-  case class PlaceOrder(order: Order) extends AccountantMessage
-  case class PlaceOrderPersisted(order: Order) extends AccountantMessage
-  case class UpdateOrderPersisted(order: Order) extends AccountantMessage
-  case class CancelOrder(id: ObjectId) extends AccountantMessage
-  case class OrderCancelled(order: Order) extends AccountantMessage
-  case class TradeNotify(trade: Trade, side: TradeSide = MAKER) extends AccountantMessage
-  case class PostingResult(uuid: UUID, result: Boolean) extends AccountantMessage
-  case class PositionsMsg(positions: Positions) extends AccountantMessage
-  case class GetPositions(account: Account) extends AccountantMessage
-  case class UpdateSafePrice(contract: Contract, safePrice: Price) extends AccountantMessage
-  case class UpdateSafePriceMap(safePrices: SafePriceMap) extends AccountantMessage
+  case class PlaceOrder(order: Order)
+  case class PlaceOrderPersisted(order: Order, sender: ActorRef)
+  case class UpdateOrderPersisted(order: Order, sender: ActorRef)
+  case class CancelOrder(id: ObjectId)
+  case class OrderCancelled(order: Order)
+  case class OrderBooked(order: Order)
+  case class TradeNotify(trade: Trade, side: TradeSide = MAKER)
+  case class PostingResult(uuid: UUID, result: Boolean)
+  case class PositionsMsg(positions: Positions)
+  case class GetPositions(account: Account)
+  case class UpdateSafePrice(contract: Contract, safePrice: Price)
+  case class UpdateSafePriceMap(safePrices: SafePriceMap)
 
   def props(name: Account): Props = Props(new Accountant(name))
 }
 
 object PersistOrder {
-  def props(order: Order): Props = Props(new PersistOrder(order))
+  def props(order: Order, sender: ActorRef): Props = Props(new PersistOrder(order, sender))
   case class UpdateOrder(quantity: Quantity)
   case object CancelOrder
+  case object AcceptOrder
+  case object BookOrder
 }
 
-class PersistOrder(order: Order) extends Actor with ActorLogging with Stash {
+class PersistOrder(order: Order, s: ActorRef) extends Actor with ActorLogging with Stash {
   val ordersColl = MongoFactory.database("orders")
   val query = MongoDBObject("_id" -> order._id)
 
@@ -60,7 +62,7 @@ class PersistOrder(order: Order) extends Actor with ActorLogging with Stash {
     val dbObj = order.toMongo
 
     ordersColl.insert(dbObj)
-    context.parent ! Accountant.PlaceOrderPersisted(order)
+    context.parent ! Accountant.PlaceOrderPersisted(order, s)
     unstashAll()
     context.become(tracking(order))
   }
@@ -69,19 +71,25 @@ class PersistOrder(order: Order) extends Actor with ActorLogging with Stash {
     if(order.quantity == 0)
       context.stop(self)
 
+    def updateAndBecome(newOrder: Order) = {
+      ordersColl.update(query, newOrder.toMongo)
+      context.parent ! Accountant.UpdateOrderPersisted(newOrder, s)
+      context.become(tracking(newOrder))
+    }
+
     LoggingReceive {
       case PersistOrder.UpdateOrder(tradeQuantity) =>
-        val newOrder = order.copy(quantity = order.quantity - tradeQuantity)
-        ordersColl.update(query, newOrder.toMongo)
-
-        context.parent ! Accountant.UpdateOrderPersisted(newOrder)
-        context.become(tracking(newOrder))
+        updateAndBecome(order.copy(quantity = order.quantity - tradeQuantity))
 
       case PersistOrder.CancelOrder =>
-        val newOrder = order.copy(quantity = 0)
-        ordersColl.update(query, newOrder.toMongo)
-        context.parent ! Accountant.UpdateOrderPersisted(newOrder)
-        context.become(tracking(newOrder))
+        updateAndBecome(order.copy(quantity = 0, cancelled = true))
+
+      case PersistOrder.AcceptOrder =>
+        updateAndBecome(order.copy(accepted = true))
+
+      case PersistOrder.BookOrder =>
+        updateAndBecome(order.copy(booked = true))
+
     }
   }
 }
@@ -113,7 +121,7 @@ class Accountant(name: Account) extends Actor with ActorLogging with Stash {
     case State(positions, pendingPostings, pendingTrades, orderMap, orderActorMap, safePrices) =>
       def calculateMargin(order: Order, positionOverrides: Positions = Map(), cashOverrides: Positions = Map()) = {
         val usePositions = (positions ++ positionOverrides).withDefault(x => 0)
-        val useOrders = order :: orderMap.values.map(_._1).toList
+        val useOrders = order :: orderMap.values.map(_._1).toList.filterNot(_.cancelled)
         val cashPositions = (usePositions.filter(x => x._1.contractType == ContractType.CASH) ++ cashOverrides).withDefaultValue(0)
 
         def marginForContract(contract: Contract): (Quantity, Quantity) = {
@@ -159,7 +167,7 @@ class Accountant(name: Account) extends Actor with ActorLogging with Stash {
 
       def checkMargin(order: Order) = {
         val (lowMargin, highMargin, maxCashSpent) = calculateMargin(order)
-        if (!positions.forall { case (c: Contract, q: Quantity) => q > maxCashSpent.withDefaultValue(0)(c) })
+        if (!maxCashSpent.forall { case (c: Contract, q: Quantity) => q <= positions.withDefaultValue(0)(c) })
           false
         else {
           val btcPosition = positions.find { case (c: Contract, _) => c.ticker == "BTC" } match {
@@ -218,16 +226,20 @@ class Accountant(name: Account) extends Actor with ActorLogging with Stash {
           val (order, persistRef) = orderMap(o._id)
           persistRef ! PersistOrder.CancelOrder
 
+        case Accountant.OrderBooked(o) =>
+          val (order, persistRef) = orderMap(o._id)
+          persistRef ! PersistOrder.BookOrder
+
         case Accountant.CancelOrder(id) =>
           val (order, persistRef) = orderMap(id)
           engineRouter ! Engine.CancelOrder(order.contract, id)
 
-        case Accountant.UpdateOrderPersisted(o) =>
+        case Accountant.UpdateOrderPersisted(o, s) =>
           val newOrderMap = orderMap + (o._id -> (o, sender()))
           context.become(trading(state.copy(orderMap = newOrderMap)))
 
         case Accountant.PlaceOrder(o) =>
-          val persistRef = context.actorOf(PersistOrder.props(o))
+          val persistRef = context.actorOf(PersistOrder.props(o, sender()))
           context.watch(persistRef)
 
         case Terminated(ref) =>
@@ -237,13 +249,16 @@ class Accountant(name: Account) extends Actor with ActorLogging with Stash {
           context.unwatch(ref)
           context.become(trading(state.copy(orderMap = newOrderMap, orderActorMap = newOrderActorMap)))
 
-        case Accountant.PlaceOrderPersisted(o) =>
+        case Accountant.PlaceOrderPersisted(o, s) =>
           if (checkMargin(o)) {
             engineRouter ! Engine.PlaceOrder(o)
-            context.become(trading(state.copy(orderMap = orderMap + (o._id -> (o, sender())), orderActorMap = orderActorMap + (sender() -> o._id))))
+            sender() ! PersistOrder.AcceptOrder
           }
-          else
-            sender() ! Status.Failure(new AccountantException("insufficient_margin"))
+          else {
+            s ! Status.Failure(new AccountantException("insufficient_margin"))
+            sender() ! PersistOrder.CancelOrder
+          }
+          context.become(trading(state.copy(orderMap = orderMap + (o._id -> (o, sender())), orderActorMap = orderActorMap + (sender() -> o._id))))
 
         case Accountant.GetPositions(account) =>
           require(account == name)
