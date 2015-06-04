@@ -39,7 +39,7 @@ class Engine(contract: Contract) extends Actor with ActorLogging {
       assert(c == contract)
       orderBook.getOrderById(id) match {
         case Some(order) =>
-          accountantRouter ! Accountant.OrderUpdate(order.copy(quantity = 0))
+          accountantRouter ! Accountant.OrderCancelled(order.copy(quantity = 0))
           context.become(state(orderBook.cancelOrder(id)))
         case None =>
           log.error(s"order $id not found")
@@ -74,7 +74,7 @@ object Test extends App {
   val dbObj = o1.toMongo
   println(dbObj)
   val ordersColl = MongoFactory.database("orders")
-  ordersColl.insert(dbObj)
+  //ordersColl.insert(dbObj)
 
   val oR = ordersColl.findOne().get
   val o = Order.fromMongo(oR)

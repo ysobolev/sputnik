@@ -184,19 +184,20 @@ package object sputnik {
   class OrderException(x: String) extends Exception(x)
 
   object Order {
-    def fromMongo(o: MongoDBObject) = Order(
-      o.as[Quantity]("quantity"),
-      o.as[Price]("price"),
-      o.as[DateTime]("timestamp"),
-      BookSide withName o.as[String]("side"),
-      Account.fromMongo(o.as[MongoDBObject]("account")),
-      Contract.fromMongo(o.as[MongoDBObject]("contract")),
-      o.as[ObjectId]("_id")
-    )
+    def fromMongo(o: MongoDBObject) = {
+      Order(
+        o.as[Quantity]("quantity"),
+        o.as[Price]("price"),
+        o.as[DateTime]("timestamp"),
+        BookSide withName o.as[String]("side"),
+        Account.fromMongo(o.as[MongoDBObject]("account")),
+        Contract.fromMongo(o.as[MongoDBObject]("contract")),
+        o.as[ObjectId]("_id")
+      )
+    }
   }
 
   case class Order(quantity: Quantity, price: Price, timestamp: DateTime, side: BookSide.BookSide, account: Account, contract: Contract, _id: ObjectId = new ObjectId()) extends Ordered[Order] {
-
     private val sign = if (side == BookSide.BUY) -1 else 1
 
     def matches(that: Order): Boolean = (this.side != that.side) && (sign * (this.price - that.price) <= 0)
