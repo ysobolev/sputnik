@@ -58,7 +58,8 @@ class PersistOrder(order: Order, s: ActorRef) extends Actor with ActorLogging wi
   val query = MongoDBObject("_id" -> order._id)
 
   val receive = LoggingReceive {
-    case _ =>
+    case msg =>
+      log.debug(s"Stashing ${msg}")
       stash()
   }
   override def preStart() = {
@@ -110,7 +111,7 @@ class Accountant(account: Account) extends Actor with ActorLogging with Stash {
     case Accountant.PositionsMsg(positions) =>
       unstashAll()
       context.become(trading(State(positions, Map.empty, Map.empty, Map.empty, Map.empty, Map.empty)))
-    case msg =>
+    case _ =>
       stash()
   }
 

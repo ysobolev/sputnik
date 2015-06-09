@@ -249,15 +249,17 @@ package object sputnik {
     def fromMongo(o: MongoDBObject) = Journal(
       o.as[String]("typ"),
       o.as[List[MongoDBObject]]("postings").map(Posting.fromMongo),
-      o.as[DateTime]("timestamp")
+      o.as[DateTime]("timestamp"),
+      o.as[ObjectId]("_id")
     )
   }
 
-  case class Journal(typ: String, postings: List[Posting], timestamp: DateTime = DateTime.now) {
+  case class Journal(typ: String, postings: List[Posting], timestamp: DateTime = DateTime.now, _id: ObjectId = new ObjectId()) {
     def toMongo: DBObject = MongoDBObject(
       "typ" -> typ,
       "postings" -> postings.map(_.toMongo),
-      "timestamp" -> timestamp
+      "timestamp" -> timestamp,
+      "_id" -> _id
     )
 
     def audit: Boolean = postings.groupBy(_.contract).forall {

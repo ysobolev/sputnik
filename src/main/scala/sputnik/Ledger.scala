@@ -6,7 +6,7 @@ package sputnik
 
 import java.util.UUID
 
-import akka.actor.{ActorLogging, Props, Actor, ActorRef}
+import akka.actor._
 import akka.event.LoggingReceive
 import com.github.nscala_time.time.Imports._
 import sputnik._
@@ -27,20 +27,43 @@ object Ledger {
 
 object PostingGroup {
   case class AddPosting(count: Int, posting: Posting)
+  case object JournalPersisted
 
   def props(uuid: UUID, count: Int): Props = Props(new PostingGroup(uuid, count))
 
 }
 
-class PostingGroup(uuid: UUID, count: Int) extends Actor with ActorLogging {
+object PersistJournal {
+  def props(journal: Journal): Props = Props(new PersistJournal(journal))
+}
+
+class PersistJournal(journal: Journal) extends Actor with ActorLogging {
+  val ledgerColl = MongoFactory.database("ledger")
+
+  override def preStart(): Unit = {
+    val dbObj = journal.toMongo
+
+    ledgerColl.insert(dbObj)
+    context.parent ! PostingGroup.JournalPersisted
+    context.stop(self)
+  }
+  val receive: Receive = LoggingReceive {
+    case _ =>
+  }
+}
+
+class PostingGroup(uuid: UUID, count: Int) extends Actor with ActorLogging with Stash {
+  def waitForPersist(journal: Journal, persister: ActorRef): Receive = LoggingReceive {
+    case PostingGroup.JournalPersisted =>
+      context.parent ! Ledger.NewJournal(uuid, journal)
+      val accountants = journal.postings.map(_.account.name).toSet[String].map(a => context.system.actorSelection("/user/accountant/" + a))
+      accountants.foreach(_ ! Accountant.PostingResult(uuid, result = true))
+      context.stop(self)
+    case Terminated(p) if p == persister =>
+      context.unwatch(p)
+  }
 
   def state(postings: List[Posting]): Receive = {
-    if (ready) {
-      context.parent ! Ledger.NewJournal(uuid, toJournal(""))
-      val accountants = postings.map(_.account.name).toSet[String].map(a => context.system.actorSelection("/user/accountant/" + a))
-      accountants.foreach(_ ! Accountant.PostingResult(uuid, result = true))
-    }
-
     def add(count: Int, posting: Posting): List[Posting] = {
       if (count != this.count)
         throw new LedgerException("count mismatch")
@@ -61,10 +84,25 @@ class PostingGroup(uuid: UUID, count: Int) extends Actor with ActorLogging {
       else
         throw new LedgerException("Postings not ready")
     }
-    LoggingReceive {
-      case PostingGroup.AddPosting(c, p) =>
-        context.become(state(add(c, p)))
+
+    if (ready) {
+      val journal = toJournal("")
+      val persister = context.actorOf(PersistJournal.props(journal), name = "persist")
+      context.watch(persister)
+      unstashAll()
+      waitForPersist(journal, persister)
     }
+    else {
+      LoggingReceive {
+        case PostingGroup.AddPosting(c, p) =>
+          context.become(state(add(c, p)))
+        case msg =>
+          log.debug(s"Stashing $msg")
+          stash()
+      }
+    }
+
+
   }
 
   val receive = state(List())
