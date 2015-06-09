@@ -14,7 +14,8 @@ import sputnik.LedgerDirection._
 import sputnik.LedgerSide._
 import scala.collection.immutable.Queue
 import com.mongodb.casbah.Imports._
-
+import scala.concurrent.duration.Duration
+import java.util.concurrent.TimeUnit
 
 class LedgerException(x: String) extends Exception(x)
 
@@ -32,6 +33,7 @@ object Ledger {
 object PostingGroup {
   case class AddPosting(count: Int, posting: Posting)
   case object JournalPersisted
+  case object TimedOut
 
   def props(uuid: UUID, count: Int): Props = Props(new PostingGroup(uuid, count))
 
@@ -57,6 +59,8 @@ class PersistJournal(journal: Journal) extends Actor with ActorLogging {
 }
 
 class PostingGroup(uuid: UUID, count: Int) extends Actor with ActorLogging with Stash {
+  val timeoutCancellable = context.system.scheduler.scheduleOnce(Duration.create(5, TimeUnit.SECONDS), self, PostingGroup.TimedOut)
+
   def waitForPersist(journal: Journal, persister: ActorRef): Receive = LoggingReceive {
     case PostingGroup.JournalPersisted =>
       context.parent ! Ledger.NewJournal(uuid, journal)
@@ -94,12 +98,17 @@ class PostingGroup(uuid: UUID, count: Int) extends Actor with ActorLogging with 
       val persister = context.actorOf(PersistJournal.props(journal), name = "persist")
       context.watch(persister)
       unstashAll()
+      timeoutCancellable.cancel()
       waitForPersist(journal, persister)
     }
     else {
       LoggingReceive {
         case PostingGroup.AddPosting(c, p) =>
           context.become(state(add(c, p)))
+        case PostingGroup.TimedOut =>
+          val accountants = postings.map(_.account.name).toSet[String].map(a => context.system.actorSelection("/user/accountant/" + a))
+          accountants.foreach(_ ! Accountant.PostingResult(uuid, result = false))
+
         case msg =>
           log.debug(s"Stashing $msg")
           stash()
