@@ -160,7 +160,7 @@ class Accountant(account: Account) extends Actor with ActorLogging with Stash {
             (x.contract.denominated, x.contract.getCashSpent(x.price, x.quantity))
           else
             (x.contract.payout, x.quantity))
-        val maxCashSpentFn = maxCashSpent.foldLeft(Map[Contract, Quantity]().withDefaultValue(0))_
+        val maxCashSpentFn = maxCashSpent.foldLeft(Map[Contract, Quantity]().withDefaultValue(0L))_
         val maxCashSpentMap = maxCashSpentFn {
           case (map: Map[Contract, Quantity], tuple: (Option[Contract], Quantity)) =>
             map + ((tuple._1.get, map(tuple._1.get) + tuple._2))
