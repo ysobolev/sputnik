@@ -39,6 +39,9 @@ object Accountant
   case class UpdateSafePrice(contract: Contract, safePrice: Price)
   case class UpdateSafePriceMap(safePrices: SafePriceMap)
 
+  case class DepositCash(account: Account, contract: Contract, quantity: Quantity)
+  case class NewPosting(count: Int, posting: Posting, uuid: UUID)
+
   def props(name: Account): Props = Props(new Accountant(name))
 }
 
@@ -68,7 +71,7 @@ class PersistOrder(order: Order, s: ActorRef) extends Actor with ActorLogging wi
   }
 
   def tracking(order: Order): Receive = {
-    if(order.quantity == 0)
+    if(order.quantity == 0L)
       context.stop(self)
 
     def updateAndBecome(newOrder: Order) = {
@@ -82,7 +85,7 @@ class PersistOrder(order: Order, s: ActorRef) extends Actor with ActorLogging wi
         updateAndBecome(order.copy(quantity = order.quantity - tradeQuantity))
 
       case PersistOrder.CancelOrder =>
-        updateAndBecome(order.copy(quantity = 0, cancelled = true))
+        updateAndBecome(order.copy(quantity = 0L, cancelled = true))
 
       case PersistOrder.AcceptOrder =>
         updateAndBecome(order.copy(accepted = true))
@@ -94,11 +97,12 @@ class PersistOrder(order: Order, s: ActorRef) extends Actor with ActorLogging wi
   }
 }
 
-class Accountant(name: Account) extends Actor with ActorLogging with Stash {
+class Accountant(account: Account) extends Actor with ActorLogging with Stash {
   val engineRouter = context.system.actorSelection("/user/engine")
+  val accountantRouter = context.system.actorSelection("/user/accountant")
   val ledger = context.system.actorSelection("/user/ledger")
 
-  override def preStart() = ledger ! Ledger.GetPositions(name)
+  override def preStart() = ledger ! Ledger.GetPositions(account)
 
   def receive: Receive = initializing
 
@@ -120,7 +124,7 @@ class Accountant(name: Account) extends Actor with ActorLogging with Stash {
   def trading(state: State): Receive = state match {
     case State(positions, pendingPostings, pendingTrades, orderMap, orderActorMap, safePrices) =>
       def calculateMargin(order: Order, positionOverrides: Positions = Map(), cashOverrides: Positions = Map()) = {
-        val usePositions = (positions ++ positionOverrides).withDefault(x => 0)
+        val usePositions = (positions ++ positionOverrides).withDefault(x => 0L)
         val useOrders = order :: orderMap.values.map(_._1).toList.filterNot(_.cancelled)
         val cashPositions = (usePositions.filter(x => x._1.contractType == ContractType.CASH) ++ cashOverrides).withDefaultValue(0)
 
@@ -141,14 +145,14 @@ class Accountant(name: Account) extends Actor with ActorLogging with Stash {
             case ContractType.FUTURES => throw new NotImplementedError("Futures not yet implemented. Need safe & reference prices")
             case ContractType.PREDICTION =>
               val payOff = contract.lotSize
-              val worstShortCover = if (minPosition < 0) -minPosition * payOff else 0
-              val bestShortCover = if (maxPosition < 0) -maxPosition * payOff else 0
+              val worstShortCover = if (minPosition < 0L) -minPosition * payOff else 0L
+              val bestShortCover = if (maxPosition < 0L) -maxPosition * payOff else 0L
               (maxSpent + bestShortCover, -maxReceived + worstShortCover)
             case _ =>
               (0, 0)
           }
         }
-        val marginsForContracts = usePositions.keys.map(marginForContract).foldLeft((0, 0))((x, y) => (x._1 + y._1, x._2 + y._2))
+        val marginsForContracts = usePositions.keys.map(marginForContract).foldLeft((0L, 0L))((x, y) => (x._1 + y._1, x._2 + y._2))
 
         val cashPairOrders = useOrders.filter(x => x.contract.contractType == ContractType.CASH_PAIR)
         val maxCashSpent = cashPairOrders.map(x =>
@@ -167,12 +171,12 @@ class Accountant(name: Account) extends Actor with ActorLogging with Stash {
 
       def checkMargin(order: Order) = {
         val (lowMargin, highMargin, maxCashSpent) = calculateMargin(order)
-        if (!maxCashSpent.forall { case (c: Contract, q: Quantity) => q <= positions.withDefaultValue(0)(c) })
+        if (!maxCashSpent.forall { case (c: Contract, q: Quantity) => q <= positions.withDefaultValue(0L)(c) })
           false
         else {
           val btcPosition = positions.find { case (c: Contract, _) => c.ticker == "BTC" } match {
             case Some((_, q: Quantity)) => q
-            case None => 0
+            case None => 0L
           }
           btcPosition >= highMargin
         }
@@ -190,8 +194,8 @@ class Accountant(name: Account) extends Actor with ActorLogging with Stash {
           val spent = myOrder.contract.getCashSpent(t.price, t.quantity)
           val denominatedDirection = if (myOrder.side == BUY) DEBIT else CREDIT
           val payoutDirection = if (myOrder.side == BUY) CREDIT else DEBIT
-          val userDenominatedPosting = Posting(myOrder.contract.denominated.get, name, t.quantity, denominatedDirection)
-          val userPayoutPosting = Posting(myOrder.contract.payout.get, name, spent, payoutDirection)
+          val userDenominatedPosting = Posting(myOrder.contract.denominated.get, account, t.quantity, denominatedDirection)
+          val userPayoutPosting = Posting(myOrder.contract.payout.get, account, spent, payoutDirection)
           val uuid: UUID = t.uuid
 
           val newPendingPostings = List(Ledger.NewPosting(4, userDenominatedPosting, uuid), Ledger.NewPosting(4, userPayoutPosting, uuid)).foldLeft(pendingPostings)(post)
@@ -204,7 +208,7 @@ class Accountant(name: Account) extends Actor with ActorLogging with Stash {
 
           def modifyPositions(positions: Positions, x: (Contract, Quantity)) = {
             val (contract, change) = x
-            positions + ((contract, positions.getOrElse(contract, 0) + change))
+            positions + ((contract, positions.getOrElse(contract, 0L) + change))
           }
 
           val newPositions = positionChanges.foldLeft(positions)(modifyPositions)
@@ -239,7 +243,7 @@ class Accountant(name: Account) extends Actor with ActorLogging with Stash {
           context.become(trading(state.copy(orderMap = newOrderMap)))
 
         case Accountant.PlaceOrder(o) =>
-          val persistRef = context.actorOf(PersistOrder.props(o, sender()))
+          val persistRef = context.actorOf(PersistOrder.props(o, sender()), name = o._id.toString)
           context.watch(persistRef)
 
         case Terminated(ref) =>
@@ -260,8 +264,8 @@ class Accountant(name: Account) extends Actor with ActorLogging with Stash {
           }
           context.become(trading(state.copy(orderMap = orderMap + (o._id -> (o, sender())), orderActorMap = orderActorMap + (sender() -> o._id))))
 
-        case Accountant.GetPositions(account) =>
-          require(account == name)
+        case Accountant.GetPositions(a) =>
+          require(a == account)
           sender ! Accountant.PositionsMsg(positions)
 
         case Accountant.UpdateSafePrice(contract, price) =>
@@ -269,6 +273,20 @@ class Accountant(name: Account) extends Actor with ActorLogging with Stash {
 
         case Accountant.UpdateSafePriceMap(safePriceMap) =>
           context.become(trading(state.copy(safePrices = safePriceMap)))
+
+        case Accountant.DepositCash(a, contract, quantity) =>
+          require(account == a)
+          val myAccountPosting = Posting(contract, account, quantity, CREDIT)
+          val remotePosting = Posting(contract, Account("cash", LedgerSide.ASSET), quantity, DEBIT)
+          val uuid = UUID.randomUUID
+          val newPendingPostings = post(pendingPostings, Ledger.NewPosting(2, myAccountPosting, uuid))
+          accountantRouter ! Accountant.NewPosting(2, remotePosting, uuid)
+          context.become(trading(state.copy(pendingPostings = newPendingPostings)))
+
+        case Accountant.NewPosting(count, posting, uuid) =>
+          val newPendingPostings = post(pendingPostings, Ledger.NewPosting(count, posting, uuid))
+          context.become(trading(state.copy(pendingPostings = newPendingPostings)))
+
       }
   }
 }

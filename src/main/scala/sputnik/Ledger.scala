@@ -76,10 +76,10 @@ class Ledger extends Actor with ActorLogging {
   val receive = state(List(), Map())
 
   def state(ledger: List[Journal], pending: Map[UUID, ActorRef]): Receive = {
-    def getBalances(user: Account, timestamp: DateTime = DateTime.now): Positions = {
+    def getBalances(account: Account, timestamp: DateTime = DateTime.now): Positions = {
       val quantities = for {
         entry <- ledger
-        posting@Posting(contract, user, _, _, _) <- entry.postings
+        posting@Posting(contract, a, _, _, _) <- entry.postings if account == a
         if entry.timestamp <= timestamp
       } yield (contract, posting.signedQuantity)
       quantities.groupBy[Contract](_._1).mapValues(_.map(_._2).sum)

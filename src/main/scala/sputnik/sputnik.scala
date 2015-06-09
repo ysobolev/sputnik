@@ -10,8 +10,8 @@ import com.mongodb.casbah.commons.MongoDBObject
 import org.bson.types.ObjectId
 
 package object sputnik {
-  type Quantity = Int
-  type Price = Int
+  type Quantity = Long
+  type Price = Long
   type Positions = Map[Contract, Quantity]
 
   object BookSide extends Enumeration {
@@ -69,15 +69,15 @@ package object sputnik {
         case Some(ob) => Some(Contract.fromMongo(ob))
         case None => None
       },
-      o.as[Int]("tickSize"),
-      o.as[Int]("lotSize"),
-      o.as[Int]("denominator"),
+      o.as[Long]("tickSize"),
+      o.as[Long]("lotSize"),
+      o.as[Long]("denominator"),
       ContractType withName o.as[String]("contractType")
     )
   }
 
-  case class Contract(ticker: String, denominated: Option[Contract], payout: Option[Contract], tickSize: Int,
-                      lotSize: Int, denominator: Int,
+  case class Contract(ticker: String, denominated: Option[Contract], payout: Option[Contract], tickSize: Long,
+                      lotSize: Long, denominator: Long,
                       contractType: ContractType.ContractType) extends Nameable {
     contractType match {
       case ContractType.CASH =>
@@ -94,11 +94,9 @@ package object sputnik {
       "contractType" -> contractType.toString)
 
     def getCashSpent(price: Price, quantity: Quantity): Quantity = {
-      val pBig: BigInt = price
-      val qBig: BigInt = quantity
       contractType match {
-        case ContractType.CASH_PAIR => (qBig * pBig / (denominator * payout.get.denominator)).toInt
-        case _ => (qBig * pBig * lotSize / denominator).toInt
+        case ContractType.CASH_PAIR => quantity * price / (denominator * payout.get.denominator)
+        case _ => quantity * price * lotSize / denominator
       }
     }
 
@@ -107,11 +105,11 @@ package object sputnik {
         case ContractType.CASH_PAIR => price * denominated.get.denominator * denominator
         case _ => price * denominator
       }
-      (p - p % tickSize).toInt
+      (p - p % tickSize).toLongExact
     }
 
     def quantityToWire(quantity: BigDecimal): Quantity = {
-      val p = contractType match {
+      val q = contractType match {
         case ContractType.CASH => quantity * denominator
         case ContractType.FUTURES => quantity
         case ContractType.PREDICTION => quantity
@@ -119,7 +117,7 @@ package object sputnik {
           val q = quantity * payout.get.denominator
           q - q % lotSize
       }
-      p.toInt
+      q.toLongExact
     }
 
     val name = ticker.replace("/", "")
@@ -166,7 +164,8 @@ package object sputnik {
       Order.fromMongo(o.as[MongoDBObject]("passiveOrder")),
       o.as[Quantity]("quantity"),
       o.as[Price]("price"),
-      o.as[DateTime]("timestamp")
+      o.as[DateTime]("timestamp"),
+      o.as[UUID]("uuid")
     )
 
   }
@@ -177,7 +176,9 @@ package object sputnik {
       "aggressiveOrder" -> aggressiveOrder.toMongo,
       "passiveOrder" -> passiveOrder.toMongo,
       "quantity" -> quantity,
-      "price" -> price
+      "price" -> price,
+      "timestamp" -> timestamp,
+      "uuid" -> uuid
     )
   }
 
@@ -259,7 +260,11 @@ package object sputnik {
       "timestamp" -> timestamp
     )
 
-    def audit: Boolean = postings.groupBy(_.contract).forall(_._2.map(_.signedQuantity).sum == 0)
+    def audit: Boolean = postings.groupBy(_.contract).forall {
+      case (c: Contract, l: List[Posting]) =>
+        val byAccountType = l.groupBy(_.account.side)
+        byAccountType.getOrElse(LedgerSide.ASSET, List[Posting]()).map(_.signedQuantity).sum == byAccountType.getOrElse(LedgerSide.LIABILITY, List[Posting]()).map(_.signedQuantity).sum
+    }
   }
 
 }

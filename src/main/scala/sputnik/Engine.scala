@@ -57,26 +57,28 @@ object Test extends App {
   val engineRouter = system.actorOf(Props[EngineRouter], name = "engine")
   val accountantRouter = system.actorOf(Props[AccountantRouter], name = "accountant")
   val ledger = system.actorOf(Props[Ledger], name = "ledger")
+
+  accountantRouter ! Accountant.DepositCash(Account("testB"), usd, usd.quantityToWire(1000))
+  accountantRouter ! Accountant.DepositCash(Account("testA"), usd, usd.quantityToWire(1000))
+  val btcq: Quantity = btc.quantityToWire(1000)
+  accountantRouter ! Accountant.DepositCash(Account("testC"), btc, btcq)
+  Thread.sleep(3000)
   val o1 = Order(btcusd.quantityToWire(1), btcusd.priceToWire(200), DateTime.now, BUY, Account("testA"), btcusd)
   accountantRouter ! Accountant.PlaceOrder(o1)
   accountantRouter ! Accountant.PlaceOrder(Order(btcusd.quantityToWire(1), btcusd.priceToWire(100), DateTime.now, BUY, Account("testB"), btcusd))
   accountantRouter ! Accountant.PlaceOrder(Order(btcusd.quantityToWire(0.5), btcusd.priceToWire(150), DateTime.now, SELL, Account("testC"), btcusd))
   import java.util.concurrent.TimeUnit
   implicit val timeout = Timeout(5, TimeUnit.SECONDS)
-  Thread.sleep(1000)
-  val positions = accountantRouter ? Accountant.GetPositions(Account("testA"))
-  positions.mapTo[Accountant.PositionsMsg].foreach(println)
+  Thread.sleep(3000)
+  val positionsA = accountantRouter ? Accountant.GetPositions(Account("testA"))
+  positionsA.mapTo[Accountant.PositionsMsg].foreach(println)
 
-  val positions2 = accountantRouter ? Accountant.GetPositions(Account("testC"))
-  positions2.mapTo[Accountant.PositionsMsg].foreach(println)
-  println(BUY.toString)
-  //system.shutdown()
-  val dbObj = o1.toMongo
-  println(dbObj)
-  val ordersColl = MongoFactory.database("orders")
-  //ordersColl.insert(dbObj)
+  val positionsB = accountantRouter ? Accountant.GetPositions(Account("testB"))
+  positionsB.mapTo[Accountant.PositionsMsg].foreach(println)
 
-  val oR = ordersColl.findOne().get
-  val o = Order.fromMongo(oR)
-  println(o)
+  val positionsC = accountantRouter ? Accountant.GetPositions(Account("testC"))
+  positionsC.mapTo[Accountant.PositionsMsg].foreach(println)
+
+  val cash_pos = accountantRouter ? Accountant.GetPositions(Account("cash", LedgerSide.ASSET))
+  cash_pos.mapTo[Accountant.PositionsMsg].foreach(println)
 }
