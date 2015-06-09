@@ -221,7 +221,6 @@ class Accountant(account: Account) extends Actor with ActorLogging with Stash {
         pendingPostings + ((posting.uuid, posting.posting :: pendingPostings.getOrElse(posting.uuid, List[Posting]())))
       }
 
-
       LoggingReceive {
         case Accountant.TradeNotify(t, side) =>
           context.actorOf(PersistTrade.props(t, side))
