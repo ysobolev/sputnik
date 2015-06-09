@@ -165,12 +165,14 @@ package object sputnik {
       o.as[Quantity]("quantity"),
       o.as[Price]("price"),
       o.as[DateTime]("timestamp"),
-      o.as[UUID]("uuid")
+      o.as[UUID]("uuid"),
+      o.as[ObjectId]("_id"),
+      o.as[Boolean]("posted")
     )
 
   }
 
-  case class Trade(aggressiveOrder: Order, passiveOrder: Order, quantity: Quantity, price: Price, timestamp: DateTime = DateTime.now, uuid: UUID = UUID.randomUUID) {
+  case class Trade(aggressiveOrder: Order, passiveOrder: Order, quantity: Quantity, price: Price, timestamp: DateTime = DateTime.now, uuid: UUID = UUID.randomUUID, _id: ObjectId = new ObjectId(), posted: Boolean = false) {
 
     def toMongo: DBObject = MongoDBObject(
       "aggressiveOrder" -> aggressiveOrder.toMongo,
@@ -178,7 +180,9 @@ package object sputnik {
       "quantity" -> quantity,
       "price" -> price,
       "timestamp" -> timestamp,
-      "uuid" -> uuid
+      "uuid" -> uuid,
+      "_id" -> _id,
+      "posted" -> posted
     )
   }
 
