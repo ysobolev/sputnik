@@ -12,8 +12,9 @@ import com.github.nscala_time.time.Imports._
 import sputnik._
 import sputnik.LedgerDirection._
 import sputnik.LedgerSide._
+import scala.collection.immutable.Queue
+import com.mongodb.casbah.Imports._
 
-import scala.collection.mutable
 
 class LedgerException(x: String) extends Exception(x)
 
@@ -23,6 +24,9 @@ object Ledger {
   case class GetPositions(account: Account)
 
   case class NewJournal(uuid: UUID, journal: Journal)
+
+  case class JournalRecovery(journal: Journal)
+  case object RecoveryDone
 }
 
 object PostingGroup {
@@ -109,11 +113,45 @@ class PostingGroup(uuid: UUID, count: Int) extends Actor with ActorLogging with 
 
 }
 
+object LedgerRecovery {
+  def props: Props = Props(new LedgerRecovery)
+}
 
-class Ledger extends Actor with ActorLogging {
-  val receive = state(List(), Map())
+class LedgerRecovery extends Actor with ActorLogging {
+  val ledgerColl = MongoFactory.database("ledger")
 
-  def state(ledger: List[Journal], pending: Map[UUID, ActorRef]): Receive = {
+  override def preStart() = {
+    val cursor = ledgerColl.find()
+    cursor.foreach(x => context.parent ! Ledger.JournalRecovery(Journal.fromMongo(x)))
+    context.parent ! Ledger.RecoveryDone
+    context.stop(self)
+  }
+
+  val receive: Receive = {
+    case _ =>
+  }
+}
+
+
+class Ledger extends Actor with ActorLogging with Stash {
+  val receive = initializing(Queue())
+
+  def initializing(ledger: Queue[Journal]): Receive = LoggingReceive {
+    case Ledger.JournalRecovery(journal) =>
+      context.become(initializing(ledger enqueue journal))
+    case Ledger.RecoveryDone =>
+      unstashAll()
+      context.become(active(ledger, Map()))
+    case msg =>
+      log.debug(s"Stashing $msg")
+      stash()
+  }
+
+  override def preStart() = {
+    context.actorOf(LedgerRecovery.props)
+  }
+
+  def active(ledger: Queue[Journal], pending: Map[UUID, ActorRef]): Receive = {
     def getBalances(account: Account, timestamp: DateTime = DateTime.now): Positions = {
       val quantities = for {
         entry <- ledger
@@ -128,13 +166,13 @@ class Ledger extends Actor with ActorLogging {
         val currentSender = sender()
         val newPending = if (!pending.contains(uuid)) pending + ((uuid, context.actorOf(PostingGroup.props(uuid, count), name = uuid.toString))) else pending
         newPending(uuid) ! PostingGroup.AddPosting(count, posting)
-        context.become(state(ledger, newPending))
+        context.become(active(ledger, newPending))
 
       case Ledger.GetPositions(user) =>
         sender ! Accountant.PositionsMsg(getBalances(user))
 
       case Ledger.NewJournal(uuid, journal) =>
-        context.become(state(journal :: ledger, pending - uuid))
+        context.become(active(ledger enqueue journal, pending - uuid))
     }
   }
 }

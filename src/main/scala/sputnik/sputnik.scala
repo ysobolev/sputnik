@@ -8,6 +8,7 @@ import com.github.nscala_time.time.Imports._
 import com.mongodb.DBObject
 import com.mongodb.casbah.commons.MongoDBObject
 import org.bson.types.ObjectId
+import com.mongodb.casbah.Imports._
 
 package object sputnik {
   type Quantity = Long
@@ -252,7 +253,7 @@ package object sputnik {
   object Journal {
     def fromMongo(o: MongoDBObject) = Journal(
       o.as[String]("typ"),
-      o.as[List[MongoDBObject]]("postings").map(Posting.fromMongo),
+      o.as[List[DBObject]]("postings").map(x => Posting.fromMongo(x)),
       o.as[DateTime]("timestamp"),
       o.as[ObjectId]("_id")
     )
