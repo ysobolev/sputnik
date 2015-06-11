@@ -6,10 +6,7 @@
       <synchronize>true</synchronize>
       <jdbc-driver>org.postgresql.Driver</jdbc-driver>
       <jdbc-url>jdbc:postgresql:sputnik</jdbc-url>
-      <user-name>pycharm</user-name>
-      <user-password>dfdadfd3dfc9dfc2dfcbdfd8dfc7</user-password>
       <libraries />
     </data-source>
   </component>
 </project>
-

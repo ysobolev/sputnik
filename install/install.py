@@ -353,6 +353,9 @@ class Installer():
     def install_dpkg(self, name):
         return self.run(["/usr/bin/apt-get", "-y", "install", name])
 
+    def update_dpkgs(self):
+        return self.run(["/usr/bin/apt-get", "update"])
+
     def install_source(self, (name, profile, path)):
         self.env["base_profile"] = profile
         result = self.run([path, "install"])
@@ -393,6 +396,7 @@ class Installer():
 
         # make dpkg deps
         self.log("Installing dpkg %sdependencies...\n" % prefix)
+        self.update_dpkgs()
         for package in deps["dpkg"]:
             if not self.check_dpkg(package):
                 self.log("%s not installed. Installing... " % package)
