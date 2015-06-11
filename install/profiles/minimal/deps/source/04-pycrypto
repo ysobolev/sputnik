@@ -10,7 +10,7 @@ check()
 
 install()
 {
-    pip uninstall pycrypto
+    pip uninstall -y pycrypto
     cd /usr/local/src
     wget $SOURCE
     tar xfz pycrypto-2.7a1.tar.gz
