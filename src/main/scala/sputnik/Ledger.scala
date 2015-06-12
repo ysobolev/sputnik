@@ -16,6 +16,7 @@ import scala.collection.immutable.Queue
 import com.mongodb.casbah.Imports._
 import scala.concurrent.duration.Duration
 import java.util.concurrent.TimeUnit
+import scala.concurrent.ExecutionContext.Implicits.global
 
 class LedgerException(x: String) extends Exception(x)
 
