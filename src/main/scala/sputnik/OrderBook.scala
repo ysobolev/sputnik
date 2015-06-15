@@ -4,12 +4,12 @@
 
 package sputnik
 
-import org.bson.types.ObjectId
 import sputnik.BookSide._
+import reactivemongo.bson._
 
 import scala.collection.SortedSet
 
-class OrderBook(bids: SortedSet[Order], asks: SortedSet[Order], seenOrders: Set[ObjectId]) {
+class OrderBook(bids: SortedSet[Order], asks: SortedSet[Order], seenOrders: Set[BSONObjectID]) {
   def this() = {
     this(SortedSet(), SortedSet(), Set())
   }
@@ -75,8 +75,8 @@ class OrderBook(bids: SortedSet[Order], asks: SortedSet[Order], seenOrders: Set[
       (if (order.side == BUY) new OrderBook(newMyBook, newBook, newSeenOrders) else new OrderBook(newBook, newMyBook, newSeenOrders), (newOrder :: orders).reverse, fills.reverse)
     }
   }
-  def getOrderById(id: ObjectId): Option[Order] = (bids ++ asks).find(_._id == id)
-  def cancelOrder(id: ObjectId): OrderBook = new OrderBook(bids.filter(_._id != id), asks.filter(_._id != id), seenOrders)
+  def getOrderById(id: BSONObjectID): Option[Order] = (bids ++ asks).find(_._id == id)
+  def cancelOrder(id: BSONObjectID): OrderBook = new OrderBook(bids.filter(_._id != id), asks.filter(_._id != id), seenOrders)
 
   override def toString =
     "OrderBook(Bids(" + bids + "), Asks(" + asks + "))"

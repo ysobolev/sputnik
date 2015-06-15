@@ -1,13 +1,11 @@
 package sputnik
 
-import com.mongodb.casbah.{MongoClient, MongoClientURI}
-import com.typesafe.config.ConfigFactory
+import reactivemongo.api._
+import scala.concurrent.ExecutionContext.Implicits.global
 
 object MongoFactory {
-/*  private val config = ConfigFactory.load()
-  private val DATABASE = config.getString("mongo.db")
-  private val server = MongoClientURI(config.getString("mongo.uri"))*/
-  private val client = MongoClient("localhost")
-  val database = client("sputnik")
+  private val driver = new MongoDriver
+  private val connection = driver.connection(List("localhost"))
+  val database = connection("sputnik")
 }
 

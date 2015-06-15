@@ -8,15 +8,14 @@ import akka.event.LoggingReceive
 import akka.pattern._
 import akka.util.Timeout
 import com.github.nscala_time.time.Imports._
-import com.mongodb.casbah.Imports._
-import com.mongodb.casbah.commons.conversions.scala.RegisterJodaTimeConversionHelpers
 import sputnik.BookSide._
 import sputnik.ContractType._
 import scala.concurrent.ExecutionContext.Implicits.global
+import reactivemongo.bson._
 
 object Engine {
   case class PlaceOrder(order: Order)
-  case class CancelOrder(contract: Contract, id: ObjectId)
+  case class CancelOrder(contract: Contract, id: BSONObjectID)
 
   def props(contract: Contract): Props = Props(new Engine(contract))
 }
@@ -49,7 +48,6 @@ class Engine(contract: Contract) extends Actor with ActorLogging {
 }
 
 object Test extends App {
-  RegisterJodaTimeConversionHelpers()
   val system = ActorSystem("sputnik")
   val btc = Contract("BTC", None, None, tickSize = 1000000, lotSize = 100000, denominator = 100000000, CASH)
   val usd = Contract("USD", None, None, tickSize = 10000, lotSize = 100, denominator = 1000000, CASH)

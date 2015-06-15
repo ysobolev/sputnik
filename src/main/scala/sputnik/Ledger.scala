@@ -9,11 +9,14 @@ import java.util.UUID
 import akka.actor._
 import akka.event.LoggingReceive
 import com.github.nscala_time.time.Imports._
+import play.api.libs.iteratee.Iteratee
+import reactivemongo.api.collections.default.BSONCollection
+import reactivemongo.bson._
 import sputnik._
 import sputnik.LedgerDirection._
 import sputnik.LedgerSide._
 import scala.collection.immutable.Queue
-import com.mongodb.casbah.Imports._
+import scala.concurrent.Future
 import scala.concurrent.duration.Duration
 import java.util.concurrent.TimeUnit
 import scala.concurrent.ExecutionContext.Implicits.global
@@ -45,14 +48,13 @@ object PersistJournal {
 }
 
 class PersistJournal(journal: Journal) extends Actor with ActorLogging {
-  val ledgerColl = MongoFactory.database("ledger")
+  val ledgerColl = MongoFactory.database[BSONCollection]("ledger")
 
   override def preStart(): Unit = {
-    val dbObj = journal.toMongo
-
-    ledgerColl.insert(dbObj)
-    context.parent ! PostingGroup.JournalPersisted
-    context.stop(self)
+    ledgerColl.insert(journal).map { lastError =>
+      context.parent ! PostingGroup.JournalPersisted
+      context.stop(self)
+    }
   }
   val receive: Receive = LoggingReceive {
     case _ =>
@@ -128,17 +130,27 @@ object LedgerRecovery {
 }
 
 class LedgerRecovery extends Actor with ActorLogging {
-  val ledgerColl = MongoFactory.database("ledger")
+  val ledgerColl = MongoFactory.database[BSONCollection]("ledger")
 
   override def preStart() = {
-    val cursor = ledgerColl.find()
-    cursor.foreach(x => context.parent ! Ledger.JournalRecovery(Journal.fromMongo(x)))
-    context.parent ! Ledger.RecoveryDone
-    context.stop(self)
+    val enumerator = ledgerColl.find(BSONDocument()).cursor[Journal].enumerate()
+    val processor: Iteratee[Journal, Unit] =
+    {
+      Iteratee.foreach { journal =>
+        context.parent ! Ledger.JournalRecovery(journal)
+      }
+    }
+    val f: Future[Unit] = enumerator |>>> processor
+    f.onSuccess {
+      case _ =>
+        context.parent ! Ledger.RecoveryDone
+        self ! Ledger.RecoveryDone
+      }
   }
 
   val receive: Receive = {
-    case _ =>
+    case Ledger.RecoveryDone =>
+      context.stop(self)
   }
 }
 

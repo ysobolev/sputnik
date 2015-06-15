@@ -8,28 +8,27 @@ import java.util.UUID
 
 import akka.actor._
 import akka.event.LoggingReceive
-import com.mongodb.casbah.commons.MongoDBObject
-import org.bson.types.ObjectId
+import reactivemongo.api.collections.default.BSONCollection
 import sputnik.LedgerDirection._
 import sputnik.TradeSide._
 import sputnik.BookSide._
 import scala.concurrent.ExecutionContext.Implicits.global
-
+import reactivemongo.bson._
 
 class AccountantException(x: String) extends Exception(x)
 
 object Accountant
 {
   type PostingMap = Map[UUID, List[Posting]]
-  type OrderMap = Map[ObjectId, (Order, ActorRef)]
-  type OrderActorMap = Map[ActorRef, ObjectId]
+  type OrderMap = Map[BSONObjectID, (Order, ActorRef)]
+  type OrderActorMap = Map[ActorRef, BSONObjectID]
   type TradeMap = Map[UUID, List[(Trade, Order, ActorRef)]]
   type SafePriceMap = Map[Contract, Price]
 
   case class PlaceOrder(order: Order)
   case class PlaceOrderPersisted(order: Order, sender: ActorRef)
   case class UpdateOrderPersisted(order: Order, sender: ActorRef)
-  case class CancelOrder(id: ObjectId)
+  case class CancelOrder(id: BSONObjectID)
   case class OrderCancelled(order: Order)
   case class OrderBooked(order: Order)
   case class TradeNotify(trade: Trade, side: TradeSide = MAKER)
@@ -53,26 +52,32 @@ object PersistTrade {
 }
 
 class PersistTrade(trade: Trade, side: TradeSide) extends Actor with ActorLogging with Stash {
-  val tradesColl = MongoFactory.database(if (side == MAKER) "tradesMaker" else "tradesTaker")
-  val query = MongoDBObject("_id" -> trade._id)
+  val tradesColl = MongoFactory.database[BSONCollection](if (side == MAKER) "tradesMaker" else "tradesTaker")
+  val query = BSONDocument("_id" -> trade._id)
 
   override def preStart(): Unit = {
-    val dbObj = trade.toMongo
-    tradesColl.insert(dbObj)
-    context.parent ! Accountant.TradePersisted(trade, side)
-    unstashAll()
-    context.become(tracking)
+    tradesColl.insert(trade).map { lastError =>
+        self ! Accountant.TradePersisted(trade, side)
+        context.parent ! Accountant.TradePersisted(trade, side)
+        unstashAll()
+    }
   }
 
   val tracking: Receive = LoggingReceive {
     case PersistTrade.TradePosted =>
-      val dbObj = trade.copy(posted = true).toMongo
-      tradesColl.update(query, dbObj)
-      context.parent ! Accountant.TradePostedPersisted
+      val newTrade = trade.copy(posted = true)
+      tradesColl.update(query, newTrade).map { lastError =>
+        self ! Accountant.TradePostedPersisted
+        context.parent ! Accountant.TradePostedPersisted
+      }
+    case Accountant.TradePostedPersisted =>
       context.stop(self)
   }
 
   val receive = LoggingReceive {
+    case Accountant.TradePersisted =>
+      context.become(tracking)
+
     case msg =>
       log.debug(s"Stashing $msg")
       stash()
@@ -87,21 +92,23 @@ object PersistOrder {
 }
 
 class PersistOrder(order: Order, s: ActorRef) extends Actor with ActorLogging with Stash {
-  val ordersColl = MongoFactory.database("orders")
-  val query = MongoDBObject("_id" -> order._id)
+  val ordersColl = MongoFactory.database[BSONCollection]("orders")
+  val query = BSONDocument("_id" -> order._id)
 
   val receive = LoggingReceive {
+    case Accountant.PlaceOrderPersisted(o, _) =>
+      context.become(tracking(o))
     case msg =>
       log.debug(s"Stashing $msg")
       stash()
   }
-  override def preStart() = {
-    val dbObj = order.toMongo
 
-    ordersColl.insert(dbObj)
-    context.parent ! Accountant.PlaceOrderPersisted(order, s)
-    unstashAll()
-    context.become(tracking(order))
+  override def preStart() = {
+    ordersColl.insert(order).map { lastError =>
+      self ! Accountant.PlaceOrderPersisted(order, s)
+      context.parent ! Accountant.PlaceOrderPersisted(order, s)
+      unstashAll()
+    }
   }
 
   def tracking(order: Order): Receive = {
@@ -109,8 +116,9 @@ class PersistOrder(order: Order, s: ActorRef) extends Actor with ActorLogging wi
       context.stop(self)
 
     def updateAndBecome(newOrder: Order) = {
-      ordersColl.update(query, newOrder.toMongo)
-      context.parent ! Accountant.UpdateOrderPersisted(newOrder, s)
+      ordersColl.update(query, newOrder).map { lastError =>
+        context.parent ! Accountant.UpdateOrderPersisted(newOrder, s)
+      }
       context.become(tracking(newOrder))
     }
 
@@ -289,7 +297,7 @@ class Accountant(account: Account) extends Actor with ActorLogging with Stash {
           context.become(trading(state.copy(orderMap = newOrderMap)))
 
         case Accountant.PlaceOrder(o) =>
-          val persistRef = context.actorOf(PersistOrder.props(o, sender()), name = o._id.toString)
+          val persistRef = context.actorOf(PersistOrder.props(o, sender()))
           context.watch(persistRef)
 
         case Terminated(ref) =>

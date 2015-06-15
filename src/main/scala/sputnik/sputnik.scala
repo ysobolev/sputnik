@@ -5,12 +5,25 @@
 import java.util.UUID
 
 import com.github.nscala_time.time.Imports._
-import com.mongodb.DBObject
-import com.mongodb.casbah.commons.MongoDBObject
-import org.bson.types.ObjectId
-import com.mongodb.casbah.Imports._
+import reactivemongo.bson._
 
 package object sputnik {
+  implicit object DatetimeReader extends BSONReader[BSONDateTime, DateTime]{
+    def read(bson: BSONDateTime): DateTime = new DateTime(bson.value)
+  }
+
+  implicit object DatetimeWriter extends BSONWriter[DateTime, BSONDateTime]{
+    def write(t: DateTime): BSONDateTime = BSONDateTime(t.getMillis)
+  }
+
+  implicit object UUIDReader extends BSONReader[BSONString, UUID]{
+    def read(bson: BSONString): UUID = UUID.fromString(bson.value)
+  }
+
+  implicit object UUIDWriter extends BSONWriter[UUID, BSONString]{
+    def write(u: UUID): BSONString = BSONString(u.toString)
+  }
+
   type Quantity = Long
   type Price = Long
   type Positions = Map[Contract, Quantity]
@@ -44,36 +57,44 @@ package object sputnik {
     def name: String
   }
 
-  trait DBAble {
-    def toMongo: DBObject
+  implicit object AccountWriter extends BSONDocumentWriter[Account] {
+    def write(account: Account): BSONDocument = BSONDocument(
+      "name" -> account.name,
+      "side" -> account.side.toString
+    )
+  }
+  implicit object AccountReader extends BSONDocumentReader[Account] {
+    def read(doc: BSONDocument): Account = {
+      Account(
+        doc.getAs[String]("name").get,
+        LedgerSide withName doc.getAs[String]("side").get
+      )
+    }
   }
 
-  object Account {
-    def fromMongo(o: MongoDBObject): Account = Account(
-      o.as[String]("name") ,
-      LedgerSide withName o.as[String]("side")
+  case class Account(name: String, side: LedgerSide.LedgerSide = LedgerSide.LIABILITY) extends Nameable
+
+  implicit object ContractWriter extends BSONDocumentWriter[Contract] {
+    def write(contract: Contract): BSONDocument = BSONDocument(
+      "ticker" -> contract.ticker,
+      "denominated" -> contract.denominated.map(write),
+      "payout" -> contract.payout.map(write),
+      "tickSize" -> contract.tickSize,
+      "lotSize" -> contract.lotSize,
+      "denominator" -> contract.denominator,
+      "contractType" -> contract.contractType.toString
     )
   }
 
-  case class Account(name: String, side: LedgerSide.LedgerSide = LedgerSide.LIABILITY) extends Nameable with DBAble {
-    def toMongo: DBObject = MongoDBObject("name" -> name, "side" -> side.toString)
-  }
-
-  object Contract {
-    def fromMongo(o: MongoDBObject): Contract = Contract(
-      o.as[String]("ticker"),
-      o.getAs[MongoDBObject]("denominated") match {
-        case Some(ob) => Some(Contract.fromMongo(ob))
-        case None => None
-      },
-      o.getAs[MongoDBObject]("payout") match {
-        case Some(ob) => Some(Contract.fromMongo(ob))
-        case None => None
-      },
-      o.as[Long]("tickSize"),
-      o.as[Long]("lotSize"),
-      o.as[Long]("denominator"),
-      ContractType withName o.as[String]("contractType")
+  implicit object ContractReader extends BSONDocumentReader[Contract] {
+    def read(doc: BSONDocument): Contract = Contract(
+      doc.getAs[String]("ticker").get,
+      doc.getAs[Contract]("denominated"),
+      doc.getAs[Contract]("payout"),
+      doc.getAs[Long]("tickSize").get,
+      doc.getAs[Long]("lotSize").get,
+      doc.getAs[Long]("denominator").get,
+      ContractType withName doc.getAs[String]("contractType").get
     )
   }
 
@@ -84,15 +105,6 @@ package object sputnik {
       case ContractType.CASH =>
       case _ => if (payout.isEmpty || denominated.isEmpty) throw new Exception("Can't create non-CASH without denominated and payout")
     }
-
-    def toMongo: DBObject = MongoDBObject(
-      "ticker" -> ticker,
-      "denominated" -> denominated.map(_.toMongo),
-      "payout" -> payout.map(_.toMongo),
-      "tickSize" -> tickSize,
-      "lotSize" -> lotSize,
-      "denominator" -> denominator,
-      "contractType" -> contractType.toString)
 
     def getCashSpent(price: Price, quantity: Quantity): Quantity = {
       contractType match {
@@ -124,26 +136,28 @@ package object sputnik {
     val name = ticker.replace("/", "")
   }
 
-  object Posting {
-    def fromMongo(o: MongoDBObject): Posting = Posting(
-      Contract.fromMongo(o.as[MongoDBObject]("contract")),
-      Account.fromMongo(o.as[MongoDBObject]("account")),
-      o.as[Quantity]("quantity"),
-      LedgerDirection withName o.as[String]("direction"),
-      o.as[DateTime]("timestamp")
+  implicit object PostingWriter extends BSONDocumentWriter[Posting] {
+    def write(posting: Posting): BSONDocument = BSONDocument(
+      "contract" -> posting.contract,
+      "account" -> posting.account,
+      "quantity" -> posting.quantity,
+      "direction" -> posting.direction.toString,
+      "timestamp" -> posting.timestamp
+    )
+  }
+
+  implicit object PostingReader extends BSONDocumentReader[Posting] {
+    def read(doc: BSONDocument): Posting = Posting(
+      doc.getAs[Contract]("contract").get,
+      doc.getAs[Account]("account").get,
+      doc.getAs[Quantity]("quantity").get,
+      LedgerDirection withName doc.getAs[String]("direction").get,
+      doc.getAs[DateTime]("timestamp").get
     )
   }
 
   case class Posting(contract: Contract, account: Account, quantity: Quantity, direction: LedgerDirection.LedgerDirection, timestamp: DateTime = DateTime.now) {
     require(contract.contractType != ContractType.CASH_PAIR)
-
-    def toMongo: DBObject = MongoDBObject(
-      "contract" -> contract.toMongo,
-      "account" -> account.toMongo,
-      "quantity" -> quantity,
-      "direction" -> direction.toString,
-      "timestamp" -> timestamp
-    )
 
     lazy val sign = {
       val user_sign = account match {
@@ -159,51 +173,65 @@ package object sputnik {
     lazy val signedQuantity = sign * quantity
   }
 
-  object Trade {
-    def fromMongo(o: MongoDBObject): Trade = Trade(
-      Order.fromMongo(o.as[MongoDBObject]("aggressiveOrder")),
-      Order.fromMongo(o.as[MongoDBObject]("passiveOrder")),
-      o.as[Quantity]("quantity"),
-      o.as[Price]("price"),
-      o.as[DateTime]("timestamp"),
-      o.as[UUID]("uuid"),
-      o.as[ObjectId]("_id"),
-      o.as[Boolean]("posted")
-    )
-
-  }
-
-  case class Trade(aggressiveOrder: Order, passiveOrder: Order, quantity: Quantity, price: Price, timestamp: DateTime = DateTime.now, uuid: UUID = UUID.randomUUID, _id: ObjectId = new ObjectId(), posted: Boolean = false) {
-
-    def toMongo: DBObject = MongoDBObject(
-      "aggressiveOrder" -> aggressiveOrder.toMongo,
-      "passiveOrder" -> passiveOrder.toMongo,
-      "quantity" -> quantity,
-      "price" -> price,
-      "timestamp" -> timestamp,
-      "uuid" -> uuid,
-      "_id" -> _id,
-      "posted" -> posted
+  implicit object TradeWriter extends BSONDocumentWriter[Trade] {
+    def write(trade: Trade): BSONDocument = BSONDocument(
+      "aggressiveOrder" -> trade.aggressiveOrder,
+      "passiveOrder" -> trade.passiveOrder,
+      "quantity" -> trade.quantity,
+      "price" -> trade.price,
+      "timestamp" -> trade.timestamp,
+      "uuid" -> trade.uuid,
+      "_id" -> trade._id,
+      "posted" -> trade.posted
     )
   }
+
+  implicit object TradeReader extends BSONDocumentReader[Trade] {
+    def read(doc: BSONDocument): Trade = Trade(
+      doc.getAs[Order]("aggressiveOrder").get,
+      doc.getAs[Order]("passiveOrder").get,
+      doc.getAs[Quantity]("quantity").get,
+      doc.getAs[Price]("price").get,
+      doc.getAs[DateTime]("timestamp").get,
+      doc.getAs[UUID]("uuid").get,
+      doc.getAs[BSONObjectID]("_id").get,
+      doc.getAs[Boolean]("posted").get
+    )
+  }
+
+
+  case class Trade(aggressiveOrder: Order, passiveOrder: Order, quantity: Quantity, price: Price, timestamp: DateTime = DateTime.now, uuid: UUID = UUID.randomUUID, _id: BSONObjectID = BSONObjectID.generate, posted: Boolean = false)
 
   class OrderException(x: String) extends Exception(x)
 
-  object Order {
-    def fromMongo(o: MongoDBObject) = {
-      Order(
-        o.as[Quantity]("quantity"),
-        o.as[Price]("price"),
-        o.as[DateTime]("timestamp"),
-        BookSide withName o.as[String]("side"),
-        Account.fromMongo(o.as[MongoDBObject]("account")),
-        Contract.fromMongo(o.as[MongoDBObject]("contract")),
-        o.as[ObjectId]("_id"),
-        o.getAsOrElse[Boolean]("accepted", false),
-        o.getAsOrElse[Boolean]("booked", false),
-        o.getAsOrElse[Boolean]("cancelled", false)
-      )
-    }
+  implicit object OrderWriter extends BSONDocumentWriter[Order] {
+    def write(order: Order): BSONDocument = BSONDocument(
+      "quantity" -> order.quantity,
+      "price" -> order.price,
+      "timestamp" -> order.timestamp,
+      "side" -> order.side.toString,
+      "account" -> order.account,
+      "contract" -> order.contract,
+      "_id" -> order._id,
+      "accepted" -> order.accepted,
+      "booked" -> order.booked,
+      "cancelled" -> order.cancelled
+    )
+  }
+
+  implicit object OrderReader extends BSONDocumentReader[Order] {
+    def read(doc: BSONDocument): Order = Order(
+      doc.getAs[Quantity]("quantity").get,
+      doc.getAs[Price]("price").get,
+      doc.getAs[DateTime]("timestamp").get,
+      BookSide withName doc.getAs[String]("side").get,
+      doc.getAs[Account]("account").get,
+      doc.getAs[Contract]("contract").get,
+      doc.getAs[BSONObjectID]("_id").get,
+      doc.getAs[Boolean]("accepted").getOrElse(false),
+      doc.getAs[Boolean]("booked").getOrElse(false),
+      doc.getAs[Boolean]("cancelled").getOrElse(false)
+    )
   }
 
   case class Order(quantity: Quantity,
@@ -212,7 +240,7 @@ package object sputnik {
                    side: BookSide.BookSide,
                    account: Account,
                    contract: Contract,
-                   _id: ObjectId = new ObjectId(),
+                   _id: BSONObjectID = BSONObjectID.generate,
                    accepted: Boolean = false,
                    booked: Boolean = false,
                    cancelled: Boolean = false) extends Ordered[Order] {
@@ -220,20 +248,7 @@ package object sputnik {
 
     def matches(that: Order): Boolean = (this.side != that.side) && (sign * (this.price - that.price) <= 0)
 
-    def isExhausted: Boolean = quantity == 0
-
-    def toMongo: DBObject = MongoDBObject(
-      "_id" -> _id,
-      "quantity" -> quantity,
-      "price" -> price,
-      "timestamp" -> timestamp,
-      "side" -> side.toString,
-      "account" -> account.toMongo,
-      "contract" -> contract.toMongo,
-      "accepted" -> accepted,
-      "booked" -> booked,
-      "cancelled" -> cancelled
-    )
+    def isExhausted: Boolean = quantity == 0L
 
     /** Price-Time ordering */
 
@@ -250,22 +265,22 @@ package object sputnik {
 
   }
 
-  object Journal {
-    def fromMongo(o: MongoDBObject) = Journal(
-      o.as[String]("typ"),
-      o.as[List[DBObject]]("postings").map(x => Posting.fromMongo(x)),
-      o.as[DateTime]("timestamp"),
-      o.as[ObjectId]("_id")
+  implicit object JournalWriter extends BSONDocumentWriter[Journal] {
+    def write(journal: Journal): BSONDocument = BSONDocument(
+      "typ" -> journal.typ,
+      "postings" -> journal.postings
+    )
+  }
+  implicit object JournalReader extends BSONDocumentReader[Journal] {
+    def read(doc: BSONDocument): Journal = Journal(
+      doc.getAs[String]("typ").get,
+      doc.getAs[List[Posting]]("postings").toList.flatten,
+      doc.getAs[DateTime]("timestamp").get,
+      doc.getAs[BSONObjectID]("_id").get
     )
   }
 
-  case class Journal(typ: String, postings: List[Posting], timestamp: DateTime = DateTime.now, _id: ObjectId = new ObjectId()) {
-    def toMongo: DBObject = MongoDBObject(
-      "typ" -> typ,
-      "postings" -> postings.map(_.toMongo),
-      "timestamp" -> timestamp,
-      "_id" -> _id
-    )
+  case class Journal(typ: String, postings: List[Posting], timestamp: DateTime = DateTime.now, _id: BSONObjectID = BSONObjectID.generate) {
 
     def audit: Boolean = postings.groupBy(_.contract).forall {
       case (c: Contract, l: List[Posting]) =>
