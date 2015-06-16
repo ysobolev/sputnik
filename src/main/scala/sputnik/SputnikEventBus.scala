@@ -8,6 +8,7 @@ trait SputnikClassifier
 
 case object GenericClassifier extends SputnikClassifier
 case class OrderBookClassifier(contract: Option[Contract] = None) extends SputnikClassifier
+case class OrderClassifier(contract: Option[Contract] = None, account: Option[Account] = None) extends SputnikClassifier
 case class TradeClassifier(contract: Option[Contract] = None, accountList: Set[Account] = Set[Account]()) extends SputnikClassifier
 case class PostingClassifier(contract: Option[Contract] = None, account: Option[Account] = None) extends SputnikClassifier
 
@@ -23,7 +24,8 @@ object SputnikEventBus extends EventBus with SubchannelClassification {
       TradeClassifier(Some(trade.contract), Set[Account](trade.aggressiveOrder.account, trade.passiveOrder.account))
     case posting: Posting =>
       PostingClassifier(Some(posting.contract), Some(posting.account))
-
+    case order: Order =>
+      OrderClassifier(Some(order.contract), Some(order.account))
   }
 
   protected def subclassification = new Subclassification[Classifier] {
@@ -32,6 +34,7 @@ object SputnikEventBus extends EventBus with SubchannelClassification {
       case (TradeClassifier(xc, xa), TradeClassifier(yc, ya)) => (yc.toSet subsetOf xc.toSet) && (ya subsetOf xa)
       case (OrderBookClassifier(xc), OrderBookClassifier(yc)) => yc.toSet subsetOf xc.toSet
       case (PostingClassifier(xc, xa), PostingClassifier(yc, ya)) => (yc.toSet subsetOf xc.toSet) && (ya.toSet subsetOf xa.toSet)
+      case (OrderClassifier(xc, xa), OrderClassifier(yc, ya)) => (yc.toSet subsetOf xc.toSet) && (ya.toSet subsetOf xa.toSet)
       case (_, GenericClassifier) => true
       case _ => false
     }
