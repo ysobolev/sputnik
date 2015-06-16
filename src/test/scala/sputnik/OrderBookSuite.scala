@@ -15,14 +15,14 @@ class OrderBookSuite extends FunSuite with Orders {
   }
 
   test("place one order") {
-    val (orderBook, orders, trades) = new OrderBook().placeOrder(buy100At100)
+    val (orderBook, orders, trades) = new OrderBook(btc).placeOrder(buy100At100)
     assert(orders.size === 1, "one order results")
     assert(orders.head === buy100At100, "the order is the same")
     assert(trades.size === 0, "no trades result")
   }
 
   test("place two orders on the same side") {
-    val (orderBook, orders, trades) = placeManyOrders(new OrderBook(), List(buy100At100, buy100At50))
+    val (orderBook, orders, trades) = placeManyOrders(new OrderBook(btc), List(buy100At100, buy100At50))
     assert(orders.size === 2, "two orders result")
     assert(orders.head === buy100At100, "first order is the first one")
     assert(orders(1) === buy100At50, "second order is the second one")
@@ -30,7 +30,7 @@ class OrderBookSuite extends FunSuite with Orders {
   }
 
   test("place two orders on the same side, then one that matches both, but gets exhausted") {
-    val (orderBook, orders, trades) = placeManyOrders(new OrderBook(), List(buy100At100, buy100At50, sell100At50))
+    val (orderBook, orders, trades) = placeManyOrders(new OrderBook(btc), List(buy100At100, buy100At50, sell100At50))
     assert(orders.size === 4, "four order updates result")
     assert(orders.head === buy100At100, "first order is the first one")
     assert(orders(1) === buy100At50, "second order is the second one")
@@ -42,7 +42,7 @@ class OrderBookSuite extends FunSuite with Orders {
   }
 
   test("place two orders on the same side, then one that matches both, with enough qty") {
-    val (orderBook, orders, trades) = placeManyOrders(new OrderBook(), List(buy100At100, buy100At50, sell200At50))
+    val (orderBook, orders, trades) = placeManyOrders(new OrderBook(btc), List(buy100At100, buy100At50, sell200At50))
     assert(orders.size === 5, "five order updates result")
     assert(orders.head === buy100At100, "first order is the first one")
     assert(orders(1) === buy100At50, "second order is the second one")

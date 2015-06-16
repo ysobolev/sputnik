@@ -57,6 +57,8 @@ package object sputnik {
     def name: String
   }
 
+  trait SputnikEvent
+
   implicit object AccountWriter extends BSONDocumentWriter[Account] {
     def write(account: Account): BSONDocument = BSONDocument(
       "name" -> account.name,
@@ -156,7 +158,11 @@ package object sputnik {
     )
   }
 
-  case class Posting(contract: Contract, account: Account, quantity: Quantity, direction: LedgerDirection.LedgerDirection, timestamp: DateTime = DateTime.now) {
+  case class Posting(contract: Contract,
+                     account: Account,
+                     quantity: Quantity,
+                     direction: LedgerDirection.LedgerDirection,
+                     timestamp: DateTime = DateTime.now) extends SputnikEvent {
     require(contract.contractType != ContractType.CASH_PAIR)
 
     lazy val sign = {
@@ -175,6 +181,7 @@ package object sputnik {
 
   implicit object TradeWriter extends BSONDocumentWriter[Trade] {
     def write(trade: Trade): BSONDocument = BSONDocument(
+      "contract" -> trade.contract,
       "aggressiveOrder" -> trade.aggressiveOrder,
       "passiveOrder" -> trade.passiveOrder,
       "quantity" -> trade.quantity,
@@ -188,6 +195,7 @@ package object sputnik {
 
   implicit object TradeReader extends BSONDocumentReader[Trade] {
     def read(doc: BSONDocument): Trade = Trade(
+      doc.getAs[Contract]("contract").get,
       doc.getAs[Order]("aggressiveOrder").get,
       doc.getAs[Order]("passiveOrder").get,
       doc.getAs[Quantity]("quantity").get,
@@ -200,7 +208,15 @@ package object sputnik {
   }
 
 
-  case class Trade(aggressiveOrder: Order, passiveOrder: Order, quantity: Quantity, price: Price, timestamp: DateTime = DateTime.now, uuid: UUID = UUID.randomUUID, _id: BSONObjectID = BSONObjectID.generate, posted: Boolean = false)
+  case class Trade(contract: Contract,
+                   aggressiveOrder: Order,
+                   passiveOrder: Order,
+                   quantity: Quantity,
+                   price: Price,
+                   timestamp: DateTime = DateTime.now,
+                   uuid: UUID = UUID.randomUUID,
+                   _id: BSONObjectID = BSONObjectID.generate,
+                   posted: Boolean = false) extends SputnikEvent
 
   class OrderException(x: String) extends Exception(x)
 
@@ -243,7 +259,7 @@ package object sputnik {
                    _id: BSONObjectID = BSONObjectID.generate,
                    accepted: Boolean = false,
                    booked: Boolean = false,
-                   cancelled: Boolean = false) extends Ordered[Order] {
+                   cancelled: Boolean = false) extends Ordered[Order] with SputnikEvent {
     private val sign = if (side == BookSide.BUY) -1 else 1
 
     def matches(that: Order): Boolean = (this.side != that.side) && (sign * (this.price - that.price) <= 0)
@@ -280,7 +296,7 @@ package object sputnik {
     )
   }
 
-  case class Journal(typ: String, postings: List[Posting], timestamp: DateTime = DateTime.now, _id: BSONObjectID = BSONObjectID.generate) {
+  case class Journal(typ: String, postings: List[Posting], timestamp: DateTime = DateTime.now, _id: BSONObjectID = BSONObjectID.generate) extends SputnikEvent {
 
     def audit: Boolean = postings.groupBy(_.contract).forall {
       case (c: Contract, l: List[Posting]) =>

@@ -69,6 +69,7 @@ class PostingGroup(uuid: UUID, count: Int) extends Actor with ActorLogging with 
       context.parent ! Ledger.NewJournal(uuid, journal)
       val accountants = journal.postings.map(_.account.name).toSet[String].map(a => context.system.actorSelection("/user/accountant/" + a))
       accountants.foreach(_ ! Accountant.PostingResult(uuid, result = true))
+      journal.postings.foreach(SputnikEventBus.publish)
       context.stop(self)
     case Terminated(p) if p == persister =>
       context.unwatch(p)

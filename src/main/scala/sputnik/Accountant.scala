@@ -33,7 +33,7 @@ object Accountant
   case class OrderBooked(order: Order)
   case class TradeNotify(trade: Trade, side: TradeSide = MAKER)
   case class TradePersisted(trade: Trade, side: TradeSide)
-  case class TradePostedPersisted(uuid: UUID)
+  case class TradePostedPersisted(trade: Trade)
   case class PostingResult(uuid: UUID, result: Boolean)
   case class PositionsMsg(positions: Positions)
   case class GetPositions(account: Account)
@@ -59,6 +59,7 @@ class PersistTrade(trade: Trade, side: TradeSide) extends Actor with ActorLoggin
     tradesColl.insert(trade).map { lastError =>
         self ! Accountant.TradePersisted(trade, side)
         context.parent ! Accountant.TradePersisted(trade, side)
+        SputnikEventBus.publish(trade)
         unstashAll()
     }
   }
@@ -67,10 +68,10 @@ class PersistTrade(trade: Trade, side: TradeSide) extends Actor with ActorLoggin
     case PersistTrade.TradePosted =>
       val newTrade = trade.copy(posted = true)
       tradesColl.update(query, newTrade).map { lastError =>
-        self ! Accountant.TradePostedPersisted
-        context.parent ! Accountant.TradePostedPersisted
+        self ! Accountant.TradePostedPersisted(newTrade)
+        context.parent ! Accountant.TradePostedPersisted(newTrade)
       }
-    case Accountant.TradePostedPersisted =>
+    case Accountant.TradePostedPersisted(_) =>
       context.stop(self)
   }
 
@@ -270,7 +271,8 @@ class Accountant(account: Account) extends Actor with ActorLogging with Stash {
           pendingTrades.get(uuid) match {
             case Some(l: List[(Trade, Order, ActorRef)]) =>
               l.foreach {
-                case (_, _, persister: ActorRef) => persister ! PersistTrade.TradePosted
+                case (trade, _, persister: ActorRef) =>
+                  persister ! PersistTrade.TradePosted
               }
             case None =>
           }
@@ -278,7 +280,8 @@ class Accountant(account: Account) extends Actor with ActorLogging with Stash {
 
           context.become(trading(state.copy(positions = newPositions, pendingPostings = newPendingPostings, pendingTrades = newPendingTrades)))
 
-        case Accountant.TradePostedPersisted =>
+        case Accountant.TradePostedPersisted(trade) =>
+          SputnikEventBus.publish(trade)
 
         case Accountant.OrderCancelled(o) =>
           val (order, persistRef) = orderMap(o._id)

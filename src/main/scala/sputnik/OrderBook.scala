@@ -9,9 +9,9 @@ import reactivemongo.bson._
 
 import scala.collection.SortedSet
 
-class OrderBook(bids: SortedSet[Order], asks: SortedSet[Order], seenOrders: Set[BSONObjectID]) {
-  def this() = {
-    this(SortedSet(), SortedSet(), Set())
+case class OrderBook(bids: SortedSet[Order], asks: SortedSet[Order], seenOrders: Set[BSONObjectID], contract: Contract) extends SputnikEvent {
+  def this(contract: Contract) = {
+    this(SortedSet(), SortedSet(), Set(), contract)
   }
 
   /** Places an order in the order book. Returns a tuple of the updated orderbook,
@@ -50,7 +50,7 @@ class OrderBook(bids: SortedSet[Order], asks: SortedSet[Order], seenOrders: Set[
               val priceTraded = best.price
               val newAggressive = order.copy(quantity = order.quantity - quantityTraded)
               val newPassive = best.copy(quantity = best.quantity - quantityTraded)
-              val fill = Trade(order, best, quantityTraded, priceTraded)
+              val fill = Trade(contract, order, best, quantityTraded, priceTraded)
               (Some(fill), newAggressive, newPassive)
             }
             else {
@@ -72,11 +72,11 @@ class OrderBook(bids: SortedSet[Order], asks: SortedSet[Order], seenOrders: Set[
 
       val newMyBook = if (!newOrder.isExhausted) myBook + newOrder else myBook
       val newSeenOrders = seenOrders + order._id
-      (if (order.side == BUY) new OrderBook(newMyBook, newBook, newSeenOrders) else new OrderBook(newBook, newMyBook, newSeenOrders), (newOrder :: orders).reverse, fills.reverse)
+      (if (order.side == BUY) new OrderBook(newMyBook, newBook, newSeenOrders, contract) else new OrderBook(newBook, newMyBook, newSeenOrders, contract), (newOrder :: orders).reverse, fills.reverse)
     }
   }
   def getOrderById(id: BSONObjectID): Option[Order] = (bids ++ asks).find(_._id == id)
-  def cancelOrder(id: BSONObjectID): OrderBook = new OrderBook(bids.filter(_._id != id), asks.filter(_._id != id), seenOrders)
+  def cancelOrder(id: BSONObjectID): OrderBook = new OrderBook(bids.filter(_._id != id), asks.filter(_._id != id), seenOrders, contract)
 
   override def toString =
     "OrderBook(Bids(" + bids + "), Asks(" + asks + "))"

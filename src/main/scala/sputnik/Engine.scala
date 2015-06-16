@@ -24,34 +24,57 @@ object Engine {
 class Engine(contract: Contract) extends Actor with ActorLogging {
   def accountantRouter = context.system.actorSelection("/user/accountant")
 
-  val receive = state(new OrderBook())
+  val receive = state(new OrderBook(contract))
 
-  def state(orderBook: OrderBook): Receive = LoggingReceive {
-    case Engine.PlaceOrder(order) =>
-      assert(order.contract == contract)
-      val (newOrderBook, orders, trades) = orderBook.placeOrder(order)
-      sender() ! Accountant.OrderBooked(order)
-      trades.foreach((x) => accountantRouter ! Accountant.TradeNotify(x))
-      context.become(state(newOrderBook))
+  def state(orderBook: OrderBook): Receive = {
+    SputnikEventBus.publish(orderBook)
 
-    case Engine.CancelOrder(c, id) =>
-      assert(c == contract)
-      orderBook.getOrderById(id) match {
-        case Some(order) =>
-          accountantRouter ! Accountant.OrderCancelled(order.copy(quantity = 0))
-          context.become(state(orderBook.cancelOrder(id)))
-        case None =>
-          log.error(s"order $id not found")
-      }
+    LoggingReceive {
+      case Engine.PlaceOrder(order) =>
+        assert(order.contract == contract)
+        val (newOrderBook, orders, trades) = orderBook.placeOrder(order)
+        sender() ! Accountant.OrderBooked(order)
+        trades.foreach((x) => accountantRouter ! Accountant.TradeNotify(x))
+        context.become(state(newOrderBook))
+
+      case Engine.CancelOrder(c, id) =>
+        assert(c == contract)
+        orderBook.getOrderById(id) match {
+          case Some(order) =>
+            accountantRouter ! Accountant.OrderCancelled(order.copy(quantity = 0))
+            context.become(state(orderBook.cancelOrder(id)))
+          case None =>
+            log.error(s"order $id not found")
+        }
+    }
   }
 
 }
 
+
 object Test extends App {
   val system = ActorSystem("sputnik")
+
+
   val btc = Contract("BTC", None, None, tickSize = 1000000, lotSize = 100000, denominator = 100000000, CASH)
   val usd = Contract("USD", None, None, tickSize = 10000, lotSize = 100, denominator = 1000000, CASH)
   val btcusd = Contract("BTC/USD", Some(usd), Some(btc), tickSize = 100, lotSize = 1000000, 1, CASH_PAIR)
+
+  class Subscriber extends Actor with ActorLogging {
+    // set up subscriptions
+    //SputnikEventBus.subscribe(self, GenericClassifier)
+    //SputnikEventBus.subscribe(self, OrderBookClassifier())
+    //SputnikEventBus.subscribe(self, PostingClassifier())
+    SputnikEventBus.subscribe(self, TradeClassifier(None, Set(Account("testB"))))
+
+    def receive = {
+      case msg =>
+        log.info(s"subscription msg received: ${msg}")
+    }
+
+  }
+  val subscriber = system.actorOf(Props[Subscriber])
+
   val engineRouter = system.actorOf(Props[EngineRouter], name = "engine")
   val accountantRouter = system.actorOf(Props[AccountantRouter], name = "accountant")
   val ledger = system.actorOf(Props[Ledger], name = "ledger")
