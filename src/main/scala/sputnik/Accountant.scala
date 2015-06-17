@@ -167,9 +167,9 @@ class Accountant(account: Account) extends Actor with ActorLogging with Stash {
   def trading(state: State): Receive = state match {
     case State(positions, pendingPostings, pendingTrades, orderMap, orderActorMap, safePrices) =>
       def calculateMargin(order: Order, positionOverrides: Positions = Map(), cashOverrides: Positions = Map()) = {
-        val usePositions = (positions ++ positionOverrides).withDefault(x => 0L)
+        val usePositions = (positions ++ positionOverrides).withDefaultValue(0L)
         val useOrders = order :: orderMap.values.map(_._1).toList.filterNot(_.cancelled)
-        val cashPositions = (usePositions.filter(x => x._1.contractType == ContractType.CASH) ++ cashOverrides).withDefaultValue(0)
+        val cashPositions = (usePositions.filter(x => x._1.contractType == ContractType.CASH) ++ cashOverrides).withDefaultValue(0L)
 
         def marginForContract(contract: Contract): (Quantity, Quantity) = {
           val maxPosition = usePositions(contract) +
@@ -192,7 +192,7 @@ class Accountant(account: Account) extends Actor with ActorLogging with Stash {
               val bestShortCover = if (maxPosition < 0L) -maxPosition * payOff else 0L
               (maxSpent + bestShortCover, -maxReceived + worstShortCover)
             case _ =>
-              (0, 0)
+              (0L, 0L)
           }
         }
         val marginsForContracts = usePositions.keys.map(marginForContract).foldLeft((0L, 0L))((x, y) => (x._1 + y._1, x._2 + y._2))
