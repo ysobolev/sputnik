@@ -1,12 +1,40 @@
 import java.util.UUID
 
+import play.api.libs.json.Json.JsValueWrapper
 import reactivemongo.bson._
 import com.github.nscala_time.time.Imports._
+
+import play.api.libs.json._
+import play.api.libs.functional.syntax._
 
 package object models {
   type Quantity = Long
   type Price = Long
   type Positions = Map[Contract, Quantity]
+
+  // https://gist.github.com/mikesname/5237809
+  object EnumUtils {
+    def enumReads[E <: Enumeration](enum: E): Reads[E#Value] = new Reads[E#Value] {
+      def reads(json: JsValue): JsResult[E#Value] = json match {
+        case JsString(s) => {
+          try {
+            JsSuccess(enum.withName(s))
+          } catch {
+            case _: NoSuchElementException => JsError(s"Enumeration expected of type: '${enum.getClass}', but it does not appear to contain the value: '$s'")
+          }
+        }
+        case _ => JsError("String value expected")
+      }
+    }
+
+    implicit def enumWrites[E <: Enumeration]: Writes[E#Value] = new Writes[E#Value] {
+      def writes(v: E#Value): JsValue = JsString(v.toString)
+    }
+
+    implicit def enumFormat[E <: Enumeration](enum: E): Format[E#Value] = {
+      Format(EnumUtils.enumReads(enum), EnumUtils.enumWrites)
+    }
+  }
 
   object BookSide extends Enumeration {
     type BookSide = Value
@@ -32,6 +60,8 @@ package object models {
     type ContractType = Value
     val CASH, CASH_PAIR, FUTURES, PREDICTION = Value
   }
+
+  implicit val contractTypeFormat= EnumUtils.enumFormat(ContractType)
 
   trait Nameable {
     def name: String
@@ -187,4 +217,26 @@ package object models {
       doc.getAs[BSONObjectID]("_id").get
     )
   }
+
+  // http://stackoverflow.com/questions/27285760/play-json-formatter-for-mapint
+  implicit val mapReads: Reads[Map[Price, Quantity]] = new Reads[Map[Price, Quantity]] {
+    def reads(jv: JsValue): JsResult[Map[Price, Quantity]] =
+      JsSuccess(jv.as[Map[Price, Quantity]].map{case (k, v) =>
+        k.toLong -> v.asInstanceOf[Long]
+      })
+  }
+
+  implicit val mapWrites: Writes[Map[Price, Quantity]] = new Writes[Map[Price, Quantity]] {
+    def writes(map: Map[Price, Quantity]): JsValue =
+      Json.obj(map.map{case (p, q) =>
+        val ret: (String, JsValueWrapper) = p.toString -> JsNumber(q)
+        ret
+      }.toSeq:_*)
+  }
+
+  implicit val mapFormat = Format[Map[Price, Quantity]](mapReads, mapWrites)
+
+  implicit val contractFormat = Json.format[Contract]
+  implicit val aggregatedOrderBookFormat = Json.format[AggregatedOrderBook]
+
 }

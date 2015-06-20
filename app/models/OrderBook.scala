@@ -8,6 +8,8 @@ import scala.collection.SortedSet
 import reactivemongo.bson._
 import models.BookSide._
 
+case class AggregatedOrderBook(contract: Contract, bids: Map[Price, Quantity], asks: Map[Price, Quantity])
+
 case class OrderBook(bids: SortedSet[Order], asks: SortedSet[Order], seenOrders: Set[BSONObjectID], contract: Contract) extends SputnikEvent {
   def this(contract: Contract) = {
     this(SortedSet(), SortedSet(), Set(), contract)
@@ -79,4 +81,10 @@ case class OrderBook(bids: SortedSet[Order], asks: SortedSet[Order], seenOrders:
 
   override def toString =
     "OrderBook(Bids(" + bids + "), Asks(" + asks + "))"
+
+  def aggregate: AggregatedOrderBook = {
+    val bidsAggregate = bids.groupBy(x => x.price).mapValues(_.map(_.quantity).sum)
+    val asksAggregate = asks.groupBy(x => x.price).mapValues(_.map(_.quantity).sum)
+    AggregatedOrderBook(contract, bidsAggregate, asksAggregate)
+  }
 }
