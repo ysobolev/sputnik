@@ -8,7 +8,8 @@ import scala.collection.SortedSet
 import reactivemongo.bson._
 import models.BookSide._
 
-case class AggregatedOrderBook(contract: Contract, bids: Map[Price, Quantity], asks: Map[Price, Quantity])
+case class PriceQuantity(price: Price, quantity: Quantity)
+case class AggregatedOrderBook(contract: Contract, bids: List[PriceQuantity], asks: List[PriceQuantity])
 
 case class OrderBook(bids: SortedSet[Order], asks: SortedSet[Order], seenOrders: Set[BSONObjectID], contract: Contract) extends SputnikEvent {
   def this(contract: Contract) = {
@@ -83,8 +84,8 @@ case class OrderBook(bids: SortedSet[Order], asks: SortedSet[Order], seenOrders:
     "OrderBook(Bids(" + bids + "), Asks(" + asks + "))"
 
   def aggregate: AggregatedOrderBook = {
-    val bidsAggregate = bids.groupBy(x => x.price).mapValues(_.map(_.quantity).sum)
-    val asksAggregate = asks.groupBy(x => x.price).mapValues(_.map(_.quantity).sum)
+    val bidsAggregate = bids.groupBy(x => x.price).mapValues(_.toList.map(_.quantity).sum).map { case (p, q) => PriceQuantity(p, q) }.toList
+    val asksAggregate = asks.groupBy(x => x.price).mapValues(_.toList.map(_.quantity).sum).map { case (p, q) => PriceQuantity(p, q) }.toList
     AggregatedOrderBook(contract, bidsAggregate, asksAggregate)
   }
 }

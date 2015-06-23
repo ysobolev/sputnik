@@ -5,6 +5,10 @@ import akka.event.LoggingReceive
 import models._
 import models.TradeSide._
 
+object AccountantRouter {
+  def props: Props = Props(new AccountantRouter)
+}
+
 class AccountantRouter extends Actor with ActorLogging with GetOrCreateChild {
   implicit def childFactory(account: Account): Props = Accountant.props(account)
 

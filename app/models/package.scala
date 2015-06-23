@@ -1,11 +1,21 @@
 import java.util.UUID
 
+import actors.MongoFactory
+import akka.actor.Status.Failure
 import play.api.libs.json.Json.JsValueWrapper
+import reactivemongo.api.collections.default.BSONCollection
+import reactivemongo.api._
 import reactivemongo.bson._
 import com.github.nscala_time.time.Imports._
+import scala.concurrent._
+import scala.util._
+import play.modules.reactivemongo.json.BSONFormats._
 
 import play.api.libs.json._
 import play.api.libs.functional.syntax._
+import scala.concurrent.ExecutionContext.Implicits.global
+
+import scala.util.Try
 
 package object models {
   type Quantity = Long
@@ -62,6 +72,8 @@ package object models {
   }
 
   implicit val contractTypeFormat= EnumUtils.enumFormat(ContractType)
+  implicit val bookSideFormat = EnumUtils.enumFormat(BookSide)
+  implicit val ledgerSideFormat = EnumUtils.enumFormat(LedgerSide)
 
   trait Nameable {
     def name: String
@@ -218,25 +230,35 @@ package object models {
     )
   }
 
-  // http://stackoverflow.com/questions/27285760/play-json-formatter-for-mapint
-  implicit val mapReads: Reads[Map[Price, Quantity]] = new Reads[Map[Price, Quantity]] {
-    def reads(jv: JsValue): JsResult[Map[Price, Quantity]] =
-      JsSuccess(jv.as[Map[Price, Quantity]].map{case (k, v) =>
-        k.toLong -> v.asInstanceOf[Long]
-      })
-  }
-
-  implicit val mapWrites: Writes[Map[Price, Quantity]] = new Writes[Map[Price, Quantity]] {
-    def writes(map: Map[Price, Quantity]): JsValue =
-      Json.obj(map.map{case (p, q) =>
-        val ret: (String, JsValueWrapper) = p.toString -> JsNumber(q)
-        ret
-      }.toSeq:_*)
-  }
-
-  implicit val mapFormat = Format[Map[Price, Quantity]](mapReads, mapWrites)
-
+  implicit val pqFormat = Json.format[PriceQuantity]
   implicit val contractFormat = Json.format[Contract]
   implicit val aggregatedOrderBookFormat = Json.format[AggregatedOrderBook]
+  implicit val incomingOrderFormat = Json.format[IncomingOrder]
+  implicit val accountFormat = Json.format[Account]
+  implicit val orderFormat = Json.format[Order]
+
+  implicit def getContract(ticker: String): Future[Contract] = {
+    val contractsColl = MongoFactory.database[BSONCollection]("contracts")
+    val contractsFuture = contractsColl.find(BSONDocument("ticker" -> ticker)).cursor[Contract].collect[List]()
+    contractsFuture.map {
+      case l: List[Contract] if l.size == 1 =>
+        l.head
+      case _ =>
+        throw new StringIndexOutOfBoundsException(s"Contract ${ticker} not found")
+    }
+  }
+
+  implicit def getAccount(name: String, side: LedgerSide.LedgerSide = LedgerSide.LIABILITY): Future[Account] = {
+    val accountsColl = MongoFactory.database[BSONCollection]("accounts")
+    val accountsFuture = accountsColl.find(BSONDocument("name" -> name, "side" -> side.toString)).cursor[Account].collect[List]()
+    accountsFuture.map {
+      case l: List[Account] if l.size == 1 =>
+        l.head
+      case _ =>
+        val a = Account(name, side)
+        accountsColl.insert(a)
+        a
+    }
+  }
 
 }

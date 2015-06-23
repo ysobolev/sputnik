@@ -2,12 +2,25 @@ package models
 
 import com.github.nscala_time.time.Imports._
 import reactivemongo.bson.BSONObjectID
+import scala.concurrent._
+import com.github.nscala_time.time.Imports._
+import scala.concurrent.ExecutionContext.Implicits.global
 
-/**
- * Created by sameer on 6/17/15.
- */
 class OrderException(x: String) extends Exception(x)
 
+case class IncomingOrder(quantity: Quantity,
+                     price: Price,
+                     side: BookSide.BookSide,
+                     account: String,
+                     contract: String) {
+  def toOrder: Future[Order] = {
+    val future = for {
+      c <- getContract(contract)
+      a <- getAccount(account, LedgerSide.LIABILITY)
+    } yield (c, a)
+    future.map(x => Order(quantity, price, DateTime.now, side, x._2, x._1))
+  }
+}
 
 case class Order(quantity: Quantity,
                  price: Price,

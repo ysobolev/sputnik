@@ -30,6 +30,8 @@ object Ledger {
 
   case class JournalRecovery(journal: Journal)
   case object RecoveryDone
+
+  def props: Props = Props(new Ledger)
 }
 
 object PostingGroup {

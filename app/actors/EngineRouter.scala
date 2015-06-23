@@ -4,6 +4,9 @@ import akka.actor.{Props, ActorRef, ActorLogging, Actor}
 import akka.event.LoggingReceive
 import models._
 
+object EngineRouter {
+  def props: Props = Props(new EngineRouter)
+}
 
 class EngineRouter extends Actor with ActorLogging with GetOrCreateChild {
   implicit def childFactory(c: Contract): Props = Engine.props(c)

@@ -8,6 +8,7 @@ import akka.event.LoggingReceive
 import akka.pattern._
 import akka.util.Timeout
 import com.github.nscala_time.time.Imports._
+import reactivemongo.api.collections.default.BSONCollection
 import scala.concurrent.ExecutionContext.Implicits.global
 import reactivemongo.bson._
 import models._
@@ -59,6 +60,11 @@ object Test extends App {
   val btc = Contract("BTC", None, None, tickSize = 1000000, lotSize = 100000, denominator = 100000000, CASH)
   val usd = Contract("USD", None, None, tickSize = 10000, lotSize = 100, denominator = 1000000, CASH)
   val btcusd = Contract("BTC/USD", Some(usd), Some(btc), tickSize = 100, lotSize = 1000000, 1, CASH_PAIR)
+
+  val contractsColl = MongoFactory.database[BSONCollection]("contracts")
+  contractsColl.insert(btc)
+  contractsColl.insert(usd)
+  contractsColl.insert(btcusd)
 
   class Subscriber extends Actor with ActorLogging {
     // set up subscriptions

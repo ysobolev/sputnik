@@ -32,6 +32,7 @@ object Accountant
   case class UpdateOrderPersisted(order: Order, sender: ActorRef)
   case class CancelOrder(id: BSONObjectID)
   case class OrderCancelled(order: Order)
+  case class OrderPlaced(order: Order)
   case class OrderBooked(order: Order)
   case class TradeNotify(trade: Trade, side: TradeSide = MAKER)
   case class TradePersisted(trade: Trade, side: TradeSide)
@@ -94,7 +95,7 @@ object PersistOrder {
   case object BookOrder
 }
 
-class PersistOrder(order: Order, s: ActorRef) extends Actor with ActorLogging with Stash {
+class PersistOrder(order: Order, requester: ActorRef) extends Actor with ActorLogging with Stash {
   val ordersColl = MongoFactory.database[BSONCollection]("orders")
   val query = BSONDocument("_id" -> order._id)
 
@@ -108,8 +109,8 @@ class PersistOrder(order: Order, s: ActorRef) extends Actor with ActorLogging wi
 
   override def preStart() = {
     ordersColl.insert(order).map { lastError =>
-      self ! Accountant.PlaceOrderPersisted(order, s)
-      context.parent ! Accountant.PlaceOrderPersisted(order, s)
+      self ! Accountant.PlaceOrderPersisted(order, requester)
+      context.parent ! Accountant.PlaceOrderPersisted(order, requester)
       unstashAll()
     }
   }
@@ -120,7 +121,7 @@ class PersistOrder(order: Order, s: ActorRef) extends Actor with ActorLogging wi
 
     def updateAndBecome(newOrder: Order) = {
       ordersColl.update(query, newOrder).map { lastError =>
-        context.parent ! Accountant.UpdateOrderPersisted(newOrder, s)
+        context.parent ! Accountant.UpdateOrderPersisted(newOrder, requester)
       }
       context.become(tracking(newOrder))
     }
@@ -133,7 +134,9 @@ class PersistOrder(order: Order, s: ActorRef) extends Actor with ActorLogging wi
         updateAndBecome(order.copy(quantity = 0L, cancelled = true))
 
       case PersistOrder.AcceptOrder =>
-        updateAndBecome(order.copy(accepted = true))
+        val newOrder = order.copy(accepted = true)
+        requester !
+        updateAndBecome(newOrder)
 
       case PersistOrder.BookOrder =>
         updateAndBecome(order.copy(booked = true))
@@ -313,13 +316,14 @@ class Accountant(account: Account) extends Actor with ActorLogging with Stash {
           context.unwatch(ref)
           context.become(trading(state.copy(orderMap = newOrderMap, orderActorMap = newOrderActorMap)))
 
-        case Accountant.PlaceOrderPersisted(o, s) =>
+        case Accountant.PlaceOrderPersisted(o, requester) =>
           if (checkMargin(o)) {
             engineRouter ! Engine.PlaceOrder(o)
             sender() ! PersistOrder.AcceptOrder
+            requester ! Accountant.OrderPlaced(o.copy(accepted=true))
           }
           else {
-            s ! Status.Failure(new AccountantException("insufficient_margin"))
+            requester ! Status.Failure(new AccountantException("insufficient_margin"))
             sender() ! PersistOrder.CancelOrder
           }
           SputnikEventBus.publish(o)

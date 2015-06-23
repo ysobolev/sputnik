@@ -4,7 +4,8 @@ import actors.{OrderBookClassifier, SputnikEventBus, MongoFactory}
 import akka.actor.Status.Failure
 import akka.actor._
 import akka.event._
-import models.{OrderBook, Contract}
+import models._
+import play.api.libs.json._
 import reactivemongo.api.collections.default.BSONCollection
 import reactivemongo.bson.BSONDocument
 import scala.concurrent.ExecutionContext.Implicits.global
@@ -15,26 +16,18 @@ object OrderBookSocketActor {
 }
 
 class OrderBookSocketActor(out: ActorRef, ticker: String) extends Actor with ActorLogging {
-  val contractsColl = MongoFactory.database[BSONCollection]("contracts")
   override def preStart() = {
-    val contractFuture = contractsColl.find(BSONDocument("ticker" -> ticker)).cursor[Contract].collect[List]()
-    contractFuture.onSuccess {
-      case l: List[Contract] if l.size == 1 =>
-        self ! l(0)
-    }
-    contractFuture.onFailure {
-      case msg =>
-        out ! Failure(msg)
-    }
+    val futContract = getContract(ticker)
+    futContract.foreach(self ! _)
   }
   def subscribe(contract: Contract): Receive = {
     SputnikEventBus.subscribe(self, OrderBookClassifier(Some(contract)))
 
     LoggingReceive {
       case book: OrderBook =>
-        out ! book.aggregate
+        val aggJson = Json.toJson(book.aggregate)
+        out ! aggJson
     }
-
   }
   val receive: Receive = LoggingReceive {
     case c: Contract => context.become(subscribe(c))
