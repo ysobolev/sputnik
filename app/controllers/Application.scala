@@ -18,7 +18,7 @@ import akka.actor.{ Actor, DeadLetter, Props }
 
 class DeadLetterListener extends Actor {
   def receive = {
-    case d: DeadLetter =>
+    case d: DeadLetter => println(d)
   }
 }
 
@@ -58,8 +58,8 @@ class Application @Inject() (system: ActorSystem) extends Controller {
         res.map {
           case Accountant.OrderPlaced(order) =>
             Created(Json.toJson(order))
-          case Failure(e) =>
-            BadRequest(e.toString)
+          case Accountant.InsufficientMargin =>
+            BadRequest("Insufficient Margin")
         }
       case JsError(error) =>
         val p = Promise[Result]

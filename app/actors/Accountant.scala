@@ -42,6 +42,7 @@ object Accountant
   case class GetPositions(account: Account)
   case class UpdateSafePrice(contract: Contract, safePrice: Price)
   case class UpdateSafePriceMap(safePrices: SafePriceMap)
+  case object InsufficientMargin
 
   case class DepositCash(account: Account, contract: Contract, quantity: Quantity)
   case class NewPosting(count: Int, posting: Posting, uuid: UUID)
@@ -321,7 +322,7 @@ class Accountant(account: Account) extends Actor with ActorLogging with Stash {
             requester ! Accountant.OrderPlaced(o.copy(accepted=true))
           }
           else {
-            requester ! Status.Failure(new AccountantException("insufficient_margin"))
+            requester ! Accountant.InsufficientMargin
             sender() ! PersistOrder.CancelOrder
           }
           SputnikEventBus.publish(o)
