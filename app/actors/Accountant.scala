@@ -80,7 +80,7 @@ class PersistTrade(trade: Trade, side: TradeSide) extends Actor with ActorLoggin
   }
 
   val receive = LoggingReceive {
-    case Accountant.TradePersisted =>
+    case Accountant.TradePersisted(_, _) =>
       context.become(tracking)
 
     case msg =>
