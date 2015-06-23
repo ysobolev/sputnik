@@ -1,6 +1,5 @@
 package controllers
 
-import akka.actor.Status.Failure
 import play.api.libs.json._
 import play.api.mvc._
 import play.api.Play.current
@@ -39,6 +38,14 @@ class Application @Inject() (system: ActorSystem) extends Controller {
 
   def orderBookSocket(ticker: String) = WebSocket.acceptWithActor[JsValue, JsValue] { request => out =>
     OrderBookSocketActor.props(out, ticker)
+  }
+
+  def tradesByAccountSocket(account: String) = WebSocket.acceptWithActor[JsValue, JsValue] { request => out =>
+    TradeSocketActor.props(out, account = Some(account), contract = None)
+  }
+
+  def tradesByContractSocket(contract: String) = WebSocket.acceptWithActor[JsValue, JsValue] { request => out =>
+    TradeSocketActor.props(out, account = None, contract = Some(contract))
   }
 
   def getContracts = Action.async {

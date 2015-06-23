@@ -3,6 +3,7 @@ package models
 import java.util.UUID
 
 import com.github.nscala_time.time.Imports._
+import play.api.libs.json.Json
 import reactivemongo.bson.{BSONDocumentReader, BSONDocument, BSONDocumentWriter, BSONObjectID}
 
 object Trade {
@@ -43,4 +44,13 @@ case class Trade(contract: Contract,
                  timestamp: DateTime = DateTime.now,
                  uuid: UUID = UUID.randomUUID,
                  _id: BSONObjectID = BSONObjectID.generate,
-                 posted: Boolean = false) extends SputnikEvent
+                 posted: Boolean = false) extends SputnikEvent {
+
+  implicit def toFeed = TradeFeed(contract, quantity, price, timestamp)
+
+}
+object TradeFeed {
+  implicit val tradeFeedFormat = Json.format[TradeFeed]
+}
+
+case class TradeFeed(contract: Contract, quantity: Quantity, price: Price, timestamp: DateTime)

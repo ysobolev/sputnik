@@ -1,13 +1,10 @@
 package controllers
 
-import actors.{OrderBookClassifier, SputnikEventBus, MongoFactory}
-import akka.actor.Status.Failure
+import actors.{OrderBookClassifier, SputnikEventBus}
 import akka.actor._
 import akka.event._
 import models._
 import play.api.libs.json._
-import reactivemongo.api.collections.default.BSONCollection
-import reactivemongo.bson.BSONDocument
 import scala.concurrent.ExecutionContext.Implicits.global
 
 object OrderBookSocketActor {
@@ -25,8 +22,7 @@ class OrderBookSocketActor(out: ActorRef, ticker: String) extends Actor with Act
 
     LoggingReceive {
       case book: OrderBook =>
-        val aggJson = Json.toJson(book.aggregate)
-        out ! aggJson
+        out ! Json.toJson(book.aggregate)
     }
   }
   val receive: Receive = LoggingReceive {
