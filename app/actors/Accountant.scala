@@ -12,6 +12,7 @@ import models.TradeSide._
 import models.LedgerSide._
 import models.BookSide._
 import models.LedgerDirection._
+import play.api.libs.json._
 import reactivemongo.api.collections.default.BSONCollection
 import scala.concurrent.ExecutionContext.Implicits.global
 import reactivemongo.bson._
@@ -23,6 +24,7 @@ object Accountant
 {
   type PostingMap = Map[UUID, List[Posting]]
   type OrderMap = Map[BSONObjectID, (Order, ActorRef)]
+  type OrderMapClean = Map[BSONObjectID, Order]
   type OrderActorMap = Map[ActorRef, BSONObjectID]
   type TradeMap = Map[UUID, List[(Trade, Order, ActorRef)]]
   type SafePriceMap = Map[Contract, Price]
@@ -38,8 +40,13 @@ object Accountant
   case class TradePersisted(trade: Trade, side: TradeSide)
   case class TradePostedPersisted(trade: Trade)
   case class PostingResult(uuid: UUID, result: Boolean)
-  case class PositionsMsg(positions: Positions)
+
   case class GetPositions(account: Account)
+  case class PositionsMsg(positions: Positions)
+
+  case class GetOrders(account: Account)
+  case class OrdersMsg(orders: OrderMapClean)
+
   case class UpdateSafePrice(contract: Contract, safePrice: Price)
   case class UpdateSafePriceMap(safePrices: SafePriceMap)
   case object InsufficientMargin
@@ -235,6 +242,10 @@ class Accountant(account: Account) extends Actor with ActorLogging with Stash {
       }
 
       LoggingReceive {
+        case Accountant.GetOrders(a) =>
+          require(a == account)
+          sender() ! Accountant.OrdersMsg(orderMap.mapValues { case (o: Order, a: ActorRef) => o })
+
         case Accountant.TradeNotify(t, side) =>
           context.actorOf(PersistTrade.props(t, side))
 
@@ -330,7 +341,7 @@ class Accountant(account: Account) extends Actor with ActorLogging with Stash {
 
         case Accountant.GetPositions(a) =>
           require(a == account)
-          sender ! Accountant.PositionsMsg(positions)
+          sender() ! Accountant.PositionsMsg(positions)
 
         case Accountant.UpdateSafePrice(contract, price) =>
           context.become(trading(state.copy(safePrices = safePrices + (contract -> price))))

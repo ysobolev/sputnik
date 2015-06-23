@@ -23,6 +23,8 @@ class AccountantRouter extends Actor with ActorLogging with GetOrCreateChild {
       getOrCreateChild(order.account).tell(Accountant.PlaceOrder(order), sender())
     case Accountant.GetPositions(account) =>
       getOrCreateChild(account).tell(Accountant.GetPositions(account), sender())
+    case Accountant.GetOrders(account) =>
+      getOrCreateChild(account).tell(Accountant.GetOrders(account), sender())
     case Accountant.NewPosting(count, posting, uuid) =>
       getOrCreateChild(posting.account).tell(Accountant.NewPosting(count, posting, uuid), sender())
     case Accountant.DepositCash(account, contract, quantity) =>

@@ -10,6 +10,8 @@ GET         /assets/*file                      controllers.Assets.versioned(path
 
 #
 POST        /orders                            controllers.Application.placeOrder
+GET         /orders/*account                   controllers.Application.getOrders(account: String)
+GET         /positions/*account                controllers.Application.getPositions(account: String)
 GET         /contracts                         controllers.Application.getContracts
 
 # Websocket RT data feeds

@@ -1,5 +1,6 @@
 package controllers
 
+import actors.Accountant.OrderMapClean
 import play.api.libs.json._
 import play.api.mvc._
 import play.api.Play.current
@@ -9,9 +10,11 @@ import play.api.libs.concurrent.Execution.Implicits.defaultContext
 import akka.actor._
 import javax.inject._
 import akka.pattern.ask
+import reactivemongo.bson.BSONObjectID
 import scala.concurrent.duration._
 import scala.concurrent._
 import akka.util.Timeout
+import actors.Accountant
 
 import akka.actor.{ Actor, DeadLetter, Props }
 
@@ -27,6 +30,7 @@ class Application @Inject() (system: ActorSystem) extends Controller {
   val accountantRouter = system.actorOf(AccountantRouter.props, name = "accountant")
   val engineRouter = system.actorOf(EngineRouter.props, name = "engine")
   val ledger = system.actorOf(Ledger.props, name = "ledger")
+  implicit val timeout: Timeout = 5.seconds
 
   // DeadLetter Listener
   val listener = system.actorOf(Props(classOf[DeadLetterListener]))
@@ -52,11 +56,41 @@ class Application @Inject() (system: ActorSystem) extends Controller {
     Contract.getContracts.map(list => Ok(Json.toJson(list)))
   }
 
+  implicit val orderMapCleanWrites = new Writes[OrderMapClean] {
+    def writes(oMap: OrderMapClean): JsValue = {
+      val map = oMap.map {
+        case (id: BSONObjectID, o: Order) => id.stringify -> Json.toJson(o)
+      }
+      Json.toJson(map)
+    }
+  }
+  implicit val positionsWrites = new Writes[Positions] {
+    def writes(p: Positions): JsValue = {
+      val map = p.map {
+        case (c: Contract, q: Quantity) => c.ticker -> q
+      }
+      Json.toJson(map)
+    }
+  }
+
+  def getPositions(accountName: String) = Action.async {
+    for {
+      account <- Account.getAccount(accountName)
+      positionMsg <- (accountantRouter ? Accountant.GetPositions(account)).mapTo[Accountant.PositionsMsg]
+    } yield Ok(Json.toJson(positionMsg.positions))
+  }
+
+  def getOrders(accountName: String) = Action.async {
+    for {
+      account <- Account.getAccount(accountName)
+      ordersMsg <- (accountantRouter ? Accountant.GetOrders(account)).mapTo[Accountant.OrdersMsg]
+    } yield Ok(Json.toJson(ordersMsg.orders))
+  }
+
   def placeOrder = Action.async { implicit request =>
     request.body.asJson.get.validate[IncomingOrder] match {
       case success: JsSuccess[IncomingOrder] =>
         val incomingOrder = success.get
-        implicit val timeout: Timeout = 5.seconds
 
         val res = for {
           order <- incomingOrder.toOrder
