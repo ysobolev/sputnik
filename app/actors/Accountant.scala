@@ -9,10 +9,8 @@ import java.util.UUID
 import akka.actor._
 import akka.event.LoggingReceive
 import models.TradeSide._
-import models.LedgerSide._
 import models.BookSide._
 import models.LedgerDirection._
-import play.api.libs.json._
 import reactivemongo.api.collections.default.BSONCollection
 import scala.concurrent.ExecutionContext.Implicits.global
 import reactivemongo.bson._
@@ -32,7 +30,7 @@ object Accountant
   case class PlaceOrder(order: Order)
   case class PlaceOrderPersisted(order: Order, sender: ActorRef)
   case class UpdateOrderPersisted(order: Order, sender: ActorRef)
-  case class CancelOrder(id: BSONObjectID)
+  case class CancelOrder(account: Account, id: BSONObjectID)
   case class OrderCancelled(order: Order)
   case class OrderPlaced(order: Order)
   case class OrderBooked(order: Order)
@@ -42,10 +40,10 @@ object Accountant
   case class PostingResult(uuid: UUID, result: Boolean)
 
   case class GetPositions(account: Account)
-  case class PositionsMsg(positions: Positions)
 
   case class GetOrders(account: Account)
-  case class OrdersMsg(orders: OrderMapClean)
+
+  case class GetOrder(account: Account, id: BSONObjectID)
 
   case class UpdateSafePrice(contract: Contract, safePrice: Price)
   case class UpdateSafePriceMap(safePrices: SafePriceMap)
@@ -161,7 +159,7 @@ class Accountant(account: Account) extends Actor with ActorLogging with Stash {
   def receive: Receive = initializing
 
   val initializing: Receive = LoggingReceive {
-    case Accountant.PositionsMsg(positions) =>
+    case positions: Positions =>
       unstashAll()
       context.become(trading(State(positions, Map.empty, Map.empty, Map.empty, Map.empty, Map.empty)))
     case _ =>
@@ -244,7 +242,22 @@ class Accountant(account: Account) extends Actor with ActorLogging with Stash {
       LoggingReceive {
         case Accountant.GetOrders(a) =>
           require(a == account)
-          sender() ! Accountant.OrdersMsg(orderMap.mapValues { case (o: Order, a: ActorRef) => o })
+          sender() ! orderMap.mapValues { case (o: Order, a: ActorRef) => o }
+
+        case Accountant.GetOrder(a, id) =>
+          require(a == account)
+          val s = sender()
+          orderMap.get(id) match {
+            case Some((o: Order, _)) =>
+              s ! o
+            case None =>
+              val ordersColl = MongoFactory.database[BSONCollection]("orders")
+              val query = BSONDocument("_id" -> id)
+              ordersColl.find(query).cursor[Order].collect[List]().map {
+                case l: List[Order] if l.size == 1 =>
+                  s ! l.head
+              }
+          }
 
         case Accountant.TradeNotify(t, side) =>
           context.actorOf(PersistTrade.props(t, side))
@@ -307,7 +320,8 @@ class Accountant(account: Account) extends Actor with ActorLogging with Stash {
           val (order, persistRef) = orderMap(o._id)
           persistRef ! PersistOrder.BookOrder
 
-        case Accountant.CancelOrder(id) =>
+        case Accountant.CancelOrder(a, id) =>
+          require(a == account)
           val (order, persistRef) = orderMap(id)
           engineRouter ! Engine.CancelOrder(order.contract, id)
 
@@ -341,7 +355,7 @@ class Accountant(account: Account) extends Actor with ActorLogging with Stash {
 
         case Accountant.GetPositions(a) =>
           require(a == account)
-          sender() ! Accountant.PositionsMsg(positions)
+          sender() ! positions
 
         case Accountant.UpdateSafePrice(contract, price) =>
           context.become(trading(state.copy(safePrices = safePrices + (contract -> price))))

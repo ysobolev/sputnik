@@ -29,6 +29,7 @@ case class IncomingOrder(quantity: Quantity,
     future.map(x => Order(quantity, price, DateTime.now, side, x._2, x._1))
   }
 }
+
 object Order {
   implicit val orderFormat = Json.format[Order]
 

@@ -18,6 +18,8 @@ import actors.Accountant
 
 import akka.actor.{ Actor, DeadLetter, Props }
 
+import scala.util.Success
+
 class DeadLetterListener extends Actor {
   def receive = {
     case d: DeadLetter => println(d)
@@ -76,16 +78,33 @@ class Application @Inject() (system: ActorSystem) extends Controller {
   def getPositions(accountName: String) = Action.async {
     for {
       account <- Account.getAccount(accountName)
-      positionMsg <- (accountantRouter ? Accountant.GetPositions(account)).mapTo[Accountant.PositionsMsg]
-    } yield Ok(Json.toJson(positionMsg.positions))
+      positions<- (accountantRouter ? Accountant.GetPositions(account)).mapTo[Positions]
+    } yield Ok(Json.toJson(positions))
   }
 
   def getOrders(accountName: String) = Action.async {
     for {
       account <- Account.getAccount(accountName)
-      ordersMsg <- (accountantRouter ? Accountant.GetOrders(account)).mapTo[Accountant.OrdersMsg]
-    } yield Ok(Json.toJson(ordersMsg.orders))
+      orders <- (accountantRouter ? Accountant.GetOrders(account)).mapTo[OrderMapClean]
+    } yield Ok(Json.toJson(orders))
   }
+
+  def getOrder(accountName: String, id: String) = Action.async {
+    val bsonID = BSONObjectID(id)
+    for {
+      account <- Account.getAccount(accountName)
+      order <- (accountantRouter ? Accountant.GetOrder(account, bsonID)).mapTo[Order]
+    } yield Ok(Json.toJson(order))
+  }
+
+  def cancelOrder(accountName: String, id: String) = Action.async {
+    val bsonID = BSONObjectID(id)
+    Account.getAccount(accountName).map {
+      account => accountantRouter ! Accountant.CancelOrder(account, bsonID)
+    }
+    Future { NoContent }
+  }
+
 
   def placeOrder = Action.async { implicit request =>
     request.body.asJson.get.validate[IncomingOrder] match {
@@ -103,9 +122,7 @@ class Application @Inject() (system: ActorSystem) extends Controller {
             BadRequest("Insufficient Margin")
         }
       case JsError(error) =>
-        val p = Promise[Result]
-        p.success(BadRequest("Validation failed"))
-        p.future
+        Future { BadRequest("Validation failed") }
     }
 
   }

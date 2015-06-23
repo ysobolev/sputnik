@@ -192,7 +192,7 @@ class Ledger extends Actor with ActorLogging with Stash {
         context.become(active(ledger, newPending))
 
       case Ledger.GetPositions(user) =>
-        sender ! Accountant.PositionsMsg(getBalances(user))
+        sender ! getBalances(user)
 
       case Ledger.NewJournal(uuid, journal) =>
         context.become(active(ledger enqueue journal, pending - uuid))
