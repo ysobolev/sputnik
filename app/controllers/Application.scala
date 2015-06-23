@@ -14,11 +14,24 @@ import scala.concurrent.duration._
 import scala.concurrent._
 import akka.util.Timeout
 
+import akka.actor.{ Actor, DeadLetter, Props }
+
+class DeadLetterListener extends Actor {
+  def receive = {
+    case d: DeadLetter =>
+  }
+}
+
+
 @Singleton
 class Application @Inject() (system: ActorSystem) extends Controller {
   val accountantRouter = system.actorOf(AccountantRouter.props, name = "accountant")
   val engineRouter = system.actorOf(EngineRouter.props, name = "engine")
   val ledger = system.actorOf(Ledger.props, name = "ledger")
+
+  // DeadLetter Listener
+  val listener = system.actorOf(Props(classOf[DeadLetterListener]))
+  system.eventStream.subscribe(listener, classOf[DeadLetter])
 
   def index = Action {
     Ok(views.html.index("Your new application is ready."))

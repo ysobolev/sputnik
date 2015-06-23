@@ -134,9 +134,7 @@ class PersistOrder(order: Order, requester: ActorRef) extends Actor with ActorLo
         updateAndBecome(order.copy(quantity = 0L, cancelled = true))
 
       case PersistOrder.AcceptOrder =>
-        val newOrder = order.copy(accepted = true)
-        requester !
-        updateAndBecome(newOrder)
+        updateAndBecome(order.copy(accepted = true))
 
       case PersistOrder.BookOrder =>
         updateAndBecome(order.copy(booked = true))
