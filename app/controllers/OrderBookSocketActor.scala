@@ -17,7 +17,7 @@ object OrderBookSocketActor {
 
 class OrderBookSocketActor(out: ActorRef, ticker: String) extends Actor with ActorLogging {
   override def preStart() = {
-    val futContract = getContract(ticker)
+    val futContract = Contract.getContract(ticker)
     futContract.foreach(self ! _)
   }
   def subscribe(contract: Contract): Receive = {

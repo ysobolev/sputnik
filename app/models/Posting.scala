@@ -1,7 +1,30 @@
 package models
 
 import com.github.nscala_time.time.Imports._
+import reactivemongo.bson.{BSONDocumentReader, BSONDocument, BSONDocumentWriter}
 
+object Posting {
+
+  implicit object PostingWriter extends BSONDocumentWriter[Posting] {
+    def write(posting: Posting): BSONDocument = BSONDocument(
+      "contract" -> posting.contract,
+      "account" -> posting.account,
+      "quantity" -> posting.quantity,
+      "direction" -> posting.direction.toString,
+      "timestamp" -> posting.timestamp
+    )
+  }
+
+  implicit object PostingReader extends BSONDocumentReader[Posting] {
+    def read(doc: BSONDocument): Posting = Posting(
+      doc.getAs[Contract]("contract").get,
+      doc.getAs[Account]("account").get,
+      doc.getAs[Quantity]("quantity").get,
+      LedgerDirection withName doc.getAs[String]("direction").get,
+      doc.getAs[DateTime]("timestamp").get
+    )
+  }
+}
 case class Posting(contract: Contract,
                    account: Account,
                    quantity: Quantity,

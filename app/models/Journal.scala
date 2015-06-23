@@ -1,7 +1,24 @@
 package models
 
 import com.github.nscala_time.time.Imports._
-import reactivemongo.bson.BSONObjectID
+import reactivemongo.bson.{BSONDocumentReader, BSONDocument, BSONDocumentWriter, BSONObjectID}
+
+object Journal {
+  implicit object JournalWriter extends BSONDocumentWriter[Journal] {
+    def write(journal: Journal): BSONDocument = BSONDocument(
+      "typ" -> journal.typ,
+      "postings" -> journal.postings
+    )
+  }
+  implicit object JournalReader extends BSONDocumentReader[Journal] {
+    def read(doc: BSONDocument): Journal = Journal(
+      doc.getAs[String]("typ").get,
+      doc.getAs[List[Posting]]("postings").toList.flatten,
+      doc.getAs[DateTime]("timestamp").get,
+      doc.getAs[BSONObjectID]("_id").get
+    )
+  }
+}
 
 case class Journal(typ: String,
                    postings: List[Posting],

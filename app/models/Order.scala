@@ -1,12 +1,20 @@
 package models
 
-import com.github.nscala_time.time.Imports._
-import reactivemongo.bson.BSONObjectID
+import play.api.libs.json.Json
+import reactivemongo.bson.{BSONDocumentReader, BSONDocument, BSONDocumentWriter, BSONObjectID}
 import scala.concurrent._
 import com.github.nscala_time.time.Imports._
 import scala.concurrent.ExecutionContext.Implicits.global
 
+// This is req'd, don't optimize away
+import play.modules.reactivemongo.json.BSONFormats._
+
+
 class OrderException(x: String) extends Exception(x)
+
+object IncomingOrder {
+  implicit val incomingOrderFormat = Json.format[IncomingOrder]
+}
 
 case class IncomingOrder(quantity: Quantity,
                      price: Price,
@@ -15,13 +23,45 @@ case class IncomingOrder(quantity: Quantity,
                      contract: String) {
   def toOrder: Future[Order] = {
     val future = for {
-      c <- getContract(contract)
-      a <- getAccount(account, LedgerSide.LIABILITY)
+      c <- Contract.getContract(contract)
+      a <- Account.getAccount(account, LedgerSide.LIABILITY)
     } yield (c, a)
     future.map(x => Order(quantity, price, DateTime.now, side, x._2, x._1))
   }
 }
+object Order {
+  implicit val orderFormat = Json.format[Order]
 
+  implicit object OrderWriter extends BSONDocumentWriter[Order] {
+    def write(order: Order): BSONDocument = BSONDocument(
+      "quantity" -> order.quantity,
+      "price" -> order.price,
+      "timestamp" -> order.timestamp,
+      "side" -> order.side.toString,
+      "account" -> order.account,
+      "contract" -> order.contract,
+      "_id" -> order._id,
+      "accepted" -> order.accepted,
+      "booked" -> order.booked,
+      "cancelled" -> order.cancelled
+    )
+  }
+
+  implicit object OrderReader extends BSONDocumentReader[Order] {
+    def read(doc: BSONDocument): Order = Order(
+      doc.getAs[Quantity]("quantity").get,
+      doc.getAs[Price]("price").get,
+      doc.getAs[DateTime]("timestamp").get,
+      BookSide withName doc.getAs[String]("side").get,
+      doc.getAs[Account]("account").get,
+      doc.getAs[Contract]("contract").get,
+      doc.getAs[BSONObjectID]("_id").get,
+      doc.getAs[Boolean]("accepted").getOrElse(false),
+      doc.getAs[Boolean]("booked").getOrElse(false),
+      doc.getAs[Boolean]("cancelled").getOrElse(false)
+    )
+  }
+}
 case class Order(quantity: Quantity,
                  price: Price,
                  timestamp: DateTime,

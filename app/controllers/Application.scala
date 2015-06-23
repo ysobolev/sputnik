@@ -42,7 +42,7 @@ class Application @Inject() (system: ActorSystem) extends Controller {
   }
 
   def getContracts = Action.async {
-    models.getContracts.map(list => Ok(Json.toJson(list)))
+    Contract.getContracts.map(list => Ok(Json.toJson(list)))
   }
 
   def placeOrder = Action.async { implicit request =>

@@ -4,11 +4,18 @@
 
 package models
 
+import play.api.libs.json.Json
+
 import scala.collection.SortedSet
 import reactivemongo.bson._
 import models.BookSide._
 
 case class PriceQuantity(price: Price, quantity: Quantity)
+object AggregatedOrderBook {
+  implicit val pqFormat = Json.format[PriceQuantity]
+  implicit val aggregatedOrderBookFormat = Json.format[AggregatedOrderBook]
+}
+
 case class AggregatedOrderBook(contract: Contract, bids: List[PriceQuantity], asks: List[PriceQuantity])
 
 case class OrderBook(bids: SortedSet[Order], asks: SortedSet[Order], seenOrders: Set[BSONObjectID], contract: Contract) extends SputnikEvent {

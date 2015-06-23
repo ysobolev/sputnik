@@ -1,5 +1,57 @@
 package models
 
+import actors.MongoFactory
+import play.api.libs.json.Json
+import reactivemongo.api.collections.default.BSONCollection
+import reactivemongo.bson.{BSONDocumentReader, BSONDocumentWriter, BSONDocument}
+import scala.concurrent.ExecutionContext.Implicits.global
+import scala.concurrent.Future
+
+object Contract {
+
+  implicit object ContractWriter extends BSONDocumentWriter[Contract] {
+    def write(contract: Contract): BSONDocument = BSONDocument(
+      "ticker" -> contract.ticker,
+      "denominated" -> contract.denominated.map(write),
+      "payout" -> contract.payout.map(write),
+      "tickSize" -> contract.tickSize,
+      "lotSize" -> contract.lotSize,
+      "denominator" -> contract.denominator,
+      "contractType" -> contract.contractType.toString
+    )
+  }
+
+  implicit object ContractReader extends BSONDocumentReader[Contract] {
+    def read(doc: BSONDocument): Contract = Contract(
+      doc.getAs[String]("ticker").get,
+      doc.getAs[Contract]("denominated"),
+      doc.getAs[Contract]("payout"),
+      doc.getAs[Long]("tickSize").get,
+      doc.getAs[Long]("lotSize").get,
+      doc.getAs[Long]("denominator").get,
+      ContractType withName doc.getAs[String]("contractType").get
+    )
+  }
+
+  implicit def getContracts: Future[List[Contract]] = {
+    val contractsColl = MongoFactory.database[BSONCollection]("contracts")
+    contractsColl.find(BSONDocument()).cursor[Contract].collect[List]()
+  }
+
+  implicit def getContract(ticker: String): Future[Contract] = {
+    val contractsColl = MongoFactory.database[BSONCollection]("contracts")
+    val contractsFuture = contractsColl.find(BSONDocument("ticker" -> ticker)).cursor[Contract].collect[List]()
+    contractsFuture.map {
+      case l: List[Contract] if l.size == 1 =>
+        l.head
+      case _ =>
+        throw new StringIndexOutOfBoundsException(s"Contract $ticker not found")
+    }
+  }
+  implicit val contractFormat = Json.format[Contract]
+
+}
+
 case class Contract(ticker: String, denominated: Option[Contract], payout: Option[Contract], tickSize: Long,
                     lotSize: Long, denominator: Long,
                     contractType: ContractType.ContractType) extends Nameable {
