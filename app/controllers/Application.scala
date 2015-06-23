@@ -41,6 +41,10 @@ class Application @Inject() (system: ActorSystem) extends Controller {
     OrderBookSocketActor.props(out, ticker)
   }
 
+  def getContracts = Action.async {
+    models.getContracts.map(list => Ok(Json.toJson(list)))
+  }
+
   def placeOrder = Action.async { implicit request =>
     request.body.asJson.get.validate[IncomingOrder] match {
       case success: JsSuccess[IncomingOrder] =>

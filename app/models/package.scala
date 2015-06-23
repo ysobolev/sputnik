@@ -237,6 +237,11 @@ package object models {
   implicit val accountFormat = Json.format[Account]
   implicit val orderFormat = Json.format[Order]
 
+  implicit def getContracts: Future[List[Contract]] = {
+    val contractsColl = MongoFactory.database[BSONCollection]("contracts")
+    contractsColl.find(BSONDocument()).cursor[Contract].collect[List]()
+  }
+
   implicit def getContract(ticker: String): Future[Contract] = {
     val contractsColl = MongoFactory.database[BSONCollection]("contracts")
     val contractsFuture = contractsColl.find(BSONDocument("ticker" -> ticker)).cursor[Contract].collect[List]()

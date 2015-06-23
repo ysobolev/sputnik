@@ -3,13 +3,14 @@
 # ~~~~
 
 # Home page
-GET        /                            controllers.Application.index
+GET         /                            controllers.Application.index
 
 # Map static resources from the /public folder to the /assets URL path
-GET        /assets/*file                controllers.Assets.versioned(path="/public", file: Asset)
+GET         /assets/*file                controllers.Assets.versioned(path="/public", file: Asset)
 
 #
-POST       /orders             controllers.Application.placeOrder
+POST        /orders                      controllers.Application.placeOrder
+GET         /contracts                   controllers.Application.getContracts
 
 # Websocket RT data feeds
-GET        /ws/orderBook/*ticker        controllers.Application.orderBookSocket(ticker: String)
+GET         /ws/orderBook/*ticker        controllers.Application.orderBookSocket(ticker: String)
