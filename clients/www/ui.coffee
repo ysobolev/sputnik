@@ -123,6 +123,7 @@ class @Locale
         )
         if dt?
             # Convert to sputnik
+
             return dt.getTime() * 1000
         else
             return NaN
@@ -138,7 +139,11 @@ $ ->
         ws_protocol = "wss:"
         port = 8443
 
+
     uri = ws_protocol + "//" + hostname + ":#{port}" + "/ws"
+
+    # Temporarily just hardcode
+    uri = "wss://demo.m2.io:8443/ws"
 
     sputnik = new Sputnik uri
     window.sputnik = sputnik
@@ -162,8 +167,8 @@ $ ->
 
     loadAllPartials = () ->
         partial_urls =
-            login_register: 'partials/login_register.html'
-            change_password_token: 'partials/change_password_token.html'
+#            login_register: 'partials/login_register.html'
+#            change_password_token: 'partials/change_password_token.html'
         results = []
         for name, url of partial_urls
             results.push loadPartial(name, url)
@@ -721,8 +726,8 @@ $ ->
                                     if locale.country_to_locale[country]?
                                         ractive.set("sputnik.profile.locale", locale.country_to_locale[country])
 
-        tv = new window.TVFeed sputnik
-        window.tv = tv
+        #tv = new window.TVFeed sputnik
+        #window.tv = tv
 
         sputnik.on "log", (args...) -> console.log args...
         sputnik.on "warn", (args...) -> console.log args...
