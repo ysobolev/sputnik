@@ -760,13 +760,14 @@ $ ->
                 sputnik.onJoin()
 
         sputnik.on "join", () ->
+            sputnik.openMarket "BTC/PKR"
             if simple_widget?
                 if simple_widget == "trade"
                     ractive.set "current_ticker", widget_contract
                     sputnik.openMarket widget_contract
 
-            if simple_widget == "funding"
-                ractive.set "current_currency", widget_contract
+                if simple_widget == "funding"
+                    ractive.set "current_currency", widget_contract
 
         sputnik.on "auth_success", (username) ->
             ga('send', 'event', 'login', 'success')
