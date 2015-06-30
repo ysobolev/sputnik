@@ -17,38 +17,51 @@ import models._
 object Engine {
   case class PlaceOrder(order: Order)
   case class CancelOrder(contract: Contract, id: BSONObjectID)
+  case class SetAccountantRouter(router: ActorRef)
 
   def props(contract: Contract): Props = Props(new Engine(contract))
 
   sealed trait State
   case object Trading extends State
   case object Initializing extends State
+
+  sealed trait Data
+  case class Initialized(orderBook: OrderBook, accountantRouter: ActorRef) extends Data
+  case object Uninitialized extends Data
 }
 
 
-class Engine(contract: Contract) extends LoggingFSM[State, OrderBook] {
-  def accountantRouter = context.system.actorSelection("/user/accountant")
-  startWith(Trading, new OrderBook(contract))
+class Engine(contract: Contract) extends LoggingFSM[State, Data] with Stash {
+  startWith(Initializing, Uninitialized)
 
-  when(Engine.Trading) {
-    case Event(PlaceOrder(order), orderBook: OrderBook) =>
+  when(Initializing) {
+    case Event(SetAccountantRouter(router), Uninitialized) =>
+      unstashAll()
+      goto(Trading) using Initialized(new OrderBook(contract), router)
+    case _ =>
+      stash()
+      stay
+  }
+
+  when(Trading) {
+    case Event(PlaceOrder(order), data @ Initialized(orderBook: OrderBook, accountantRouter: ActorRef)) =>
       assert(order.contract == contract)
       val (newOrderBook, orders, trades) = orderBook.placeOrder(order)
       sender() ! Accountant.OrderBooked(order)
       trades.foreach((x) => accountantRouter ! Accountant.TradeNotify(x))
       SputnikEventBus.publish(newOrderBook)
-      goto(Trading) using newOrderBook
-    case Event(CancelOrder(c, id), orderBook: OrderBook) =>
+      goto(Trading) using data.copy(orderBook = newOrderBook)
+    case Event(CancelOrder(c, id), data @ Initialized(orderBook: OrderBook, accountantRouter: ActorRef)) =>
       assert(c == contract)
       orderBook.getOrderById(id) match {
         case Some(order) =>
           accountantRouter ! Accountant.OrderCancelled(order.copy(quantity = 0))
           val newOrderBook = orderBook.cancelOrder(id)
           SputnikEventBus.publish(newOrderBook)
-          goto(Trading) using newOrderBook
+          goto(Trading) using data.copy(orderBook = newOrderBook)
         case None =>
           log.error(s"order $id not found")
-          stay using orderBook
+          stay using data
       }
   }
 

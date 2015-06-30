@@ -38,6 +38,8 @@ class Application @Inject() (system: ActorSystem) extends Controller {
   val listener = system.actorOf(Props(classOf[DeadLetterListener]))
   system.eventStream.subscribe(listener, classOf[DeadLetter])
 
+  engineRouter ! Engine.SetAccountantRouter(accountantRouter)
+
   def index = Action {
     Ok(views.html.index("Your new application is ready."))
   }
