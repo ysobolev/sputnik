@@ -36,11 +36,15 @@ class Engine(contract: Contract) extends LoggingFSM[State, Data] with Stash {
 
   when(Initializing) {
     case Event(SetAccountantRouter(router), Uninitialized) =>
-      unstashAll()
       goto(Trading) using Initialized(new OrderBook(contract), router)
     case _ =>
       stash()
       stay
+  }
+
+  onTransition {
+    case Initializing -> Trading =>
+      unstashAll()
   }
 
   when(Trading) {
