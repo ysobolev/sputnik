@@ -3,7 +3,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 package actors
 
-import akka.actor.{Actor, ActorLogging, ActorSystem, Props}
+import actors.Engine._
+import akka.actor._
 import akka.event.LoggingReceive
 import akka.pattern._
 import akka.util.Timeout
@@ -18,35 +19,40 @@ object Engine {
   case class CancelOrder(contract: Contract, id: BSONObjectID)
 
   def props(contract: Contract): Props = Props(new Engine(contract))
+
+  sealed trait State
+  case object Trading extends State
+  case object Initializing extends State
 }
 
 
-class Engine(contract: Contract) extends Actor with ActorLogging {
+class Engine(contract: Contract) extends LoggingFSM[State, OrderBook] {
   def accountantRouter = context.system.actorSelection("/user/accountant")
+  startWith(Trading, new OrderBook(contract))
 
-  val receive = state(new OrderBook(contract))
-
-  def state(orderBook: OrderBook): Receive = {
-    SputnikEventBus.publish(orderBook)
-
-    LoggingReceive {
-      case Engine.PlaceOrder(order) =>
-        assert(order.contract == contract)
-        val (newOrderBook, orders, trades) = orderBook.placeOrder(order)
-        sender() ! Accountant.OrderBooked(order)
-        trades.foreach((x) => accountantRouter ! Accountant.TradeNotify(x))
-        context.become(state(newOrderBook))
-
-      case Engine.CancelOrder(c, id) =>
-        assert(c == contract)
-        orderBook.getOrderById(id) match {
-          case Some(order) =>
-            accountantRouter ! Accountant.OrderCancelled(order.copy(quantity = 0))
-            context.become(state(orderBook.cancelOrder(id)))
-          case None =>
-            log.error(s"order $id not found")
-        }
-    }
+  when(Engine.Trading) {
+    case Event(PlaceOrder(order), orderBook: OrderBook) =>
+      assert(order.contract == contract)
+      val (newOrderBook, orders, trades) = orderBook.placeOrder(order)
+      sender() ! Accountant.OrderBooked(order)
+      trades.foreach((x) => accountantRouter ! Accountant.TradeNotify(x))
+      SputnikEventBus.publish(newOrderBook)
+      goto(Trading) using newOrderBook
+    case Event(CancelOrder(c, id), orderBook: OrderBook) =>
+      assert(c == contract)
+      orderBook.getOrderById(id) match {
+        case Some(order) =>
+          accountantRouter ! Accountant.OrderCancelled(order.copy(quantity = 0))
+          val newOrderBook = orderBook.cancelOrder(id)
+          SputnikEventBus.publish(newOrderBook)
+          goto(Trading) using newOrderBook
+        case None =>
+          log.error(s"order $id not found")
+          stay using orderBook
+      }
   }
+
+
+  initialize()
 
 }

@@ -18,12 +18,12 @@ trait Orders {
   val sell100At50 = Order(100, 50, DateTime.now, SELL, user, btcusd)
   val sell100At150 = Order(100, 150, DateTime.now, SELL, user, btcusd)
 
-  val now = DateTime.now
-  val sell100At100Now = Order(100, 100, now, SELL, user, btcusd)
-  val sell100At100In5Min = Order(100, 100, now + 5.minutes, SELL, user, btcusd)
+  val nowTime = DateTime.now
+  val sell100At100Now = Order(100, 100, nowTime, SELL, user, btcusd)
+  val sell100At100In5Min = Order(100, 100, nowTime + 5.minutes, SELL, user, btcusd)
 
-  val buy100At100Now = Order(100, 100, now, BUY, user, btcusd)
-  val buy100At100In5Min = Order(100, 100, now + 5.minutes, BUY, user, btcusd)
+  val buy100At100Now = Order(100, 100, nowTime, BUY, user, btcusd)
+  val buy100At100In5Min = Order(100, 100, nowTime + 5.minutes, BUY, user, btcusd)
 
   val sell200At50 = Order(200, 50, DateTime.now, SELL, user, btcusd)
 
