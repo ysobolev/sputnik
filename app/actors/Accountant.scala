@@ -20,11 +20,9 @@ class AccountantException(x: String) extends Exception(x)
 
 object Accountant
 {
-  type PostingMap = Map[UUID, List[Posting]]
   type OrderMap = Map[BSONObjectID, (Order, ActorRef)]
   type OrderMapClean = Map[BSONObjectID, Order]
   type OrderActorMap = Map[ActorRef, BSONObjectID]
-  type TradeMap = Map[UUID, List[(Trade, Order, ActorRef)]]
   type SafePriceMap = Map[Contract, Price]
 
   case class PlaceOrder(order: Order)
@@ -35,7 +33,6 @@ object Accountant
   case class OrderPlaced(order: Order)
   case class OrderBooked(order: Order)
   case class TradeNotify(trade: Trade, side: TradeSide = MAKER)
-  case class TradePersisted(trade: Trade, side: TradeSide)
   case class TradePostedPersisted(trade: Trade)
   case class PostingResult(uuid: UUID, result: Boolean)
 
@@ -48,9 +45,13 @@ object Accountant
   case class UpdateSafePrice(contract: Contract, safePrice: Price)
   case class UpdateSafePriceMap(safePrices: SafePriceMap)
   case object InsufficientMargin
+  case object InvalidOrder
 
   case class DepositCash(account: Account, contract: Contract, quantity: Quantity)
   case class NewPosting(count: Int, posting: Posting, uuid: UUID)
+
+  case class Posted(posting: Posting)
+  case class TradePosted(trade: Trade, postings: Set[Posting], side: TradeSide)
 
   def props(name: Account): Props = Props(new Accountant(name))
 }
@@ -66,8 +67,8 @@ class PersistTrade(trade: Trade, side: TradeSide) extends Actor with ActorLoggin
 
   override def preStart(): Unit = {
     tradesColl.insert(trade).map { lastError =>
-        self ! Accountant.TradePersisted(trade, side)
-        context.parent ! Accountant.TradePersisted(trade, side)
+        self ! TradePoster.TradePersisted
+        context.parent ! TradePoster.TradePersisted
         SputnikEventBus.publish(trade)
         unstashAll()
     }
@@ -85,7 +86,7 @@ class PersistTrade(trade: Trade, side: TradeSide) extends Actor with ActorLoggin
   }
 
   val receive = LoggingReceive {
-    case Accountant.TradePersisted(_, _) =>
+    case TradePoster.TradePersisted =>
       context.become(tracking)
 
     case msg =>
@@ -93,6 +94,7 @@ class PersistTrade(trade: Trade, side: TradeSide) extends Actor with ActorLoggin
       stash()
   }
 }
+
 object PersistOrder {
   def props(order: Order, sender: ActorRef): Props = Props(new PersistOrder(order, sender))
   case class UpdateOrder(quantity: Quantity)
@@ -149,6 +151,64 @@ class PersistOrder(order: Order, requester: ActorRef) extends Actor with ActorLo
   }
 }
 
+object Poster {
+  def props(count: Int, posting: Posting, uuid: UUID) = Props(new Poster(count, posting, uuid))
+}
+
+class Poster(count: Int, posting: Posting, uuid: UUID) extends Actor with ActorLogging {
+  val ledger = context.system.actorSelection("/user/ledger")
+  ledger ! Ledger.NewPosting(count, posting, uuid)
+
+  def receive: Receive = {
+    case Accountant.PostingResult(u, true) =>
+      require(u == uuid)
+      context.parent ! Accountant.Posted(posting)
+  }
+}
+
+object TradePoster {
+  def props(trade: Trade, side: TradeSide, account: Account) = Props(new TradePoster(trade, side, account))
+  case object TradePersisted
+}
+
+class TradePoster(trade: Trade, side: TradeSide, account: Account) extends Actor with ActorLogging {
+  context.actorOf(PersistTrade.props(trade, side))
+
+  def receive: Receive = {
+    case TradePoster.TradePersisted =>
+      val tradePersister = sender()
+      val myOrder = if (side == MAKER) trade.passiveOrder else trade.aggressiveOrder
+      val spent = myOrder.contract.getCashSpent(trade.price, trade.quantity)
+      val denominatedDirection = if (myOrder.side == BUY) DEBIT else CREDIT
+      val payoutDirection = if (myOrder.side == BUY) CREDIT else DEBIT
+      val userDenominatedPosting = Posting(myOrder.contract.denominated.get, account, spent, denominatedDirection)
+      val userPayoutPosting = Posting(myOrder.contract.payout.get, account, trade.quantity, payoutDirection)
+      val uuid: UUID = trade.uuid
+      val postingSet = Set(userDenominatedPosting, userPayoutPosting)
+      postingSet.foreach(x => context.actorOf(Poster.props(4, x, uuid)))
+      context.become(waitForPosted(tradePersister, postingSet, Set.empty))
+  }
+
+  def waitForPosted(tradePersister: ActorRef, postingsRemaining: Set[Posting], postingsPosted: Set[Posting]): Receive = {
+    if (postingsRemaining.isEmpty) {
+      tradePersister ! PersistTrade.TradePosted
+      waitForPersisted(postingsPosted)
+    }
+    else {
+      LoggingReceive {
+        case msg@Accountant.Posted(posting) =>
+          context.become(waitForPosted(tradePersister, postingsRemaining - posting, postingsPosted + posting))
+      }
+    }
+  }
+
+  def waitForPersisted(postings: Set[Posting]): Receive = {
+    case Accountant.TradePostedPersisted(t) =>
+      context.parent ! Accountant.TradePosted(t, postings, side)
+      context.stop(self)
+  }
+}
+
 class Accountant(account: Account) extends Actor with ActorLogging with Stash {
   val engineRouter = context.system.actorSelection("/user/engine")
   val accountantRouter = context.system.actorSelection("/user/accountant")
@@ -161,20 +221,28 @@ class Accountant(account: Account) extends Actor with ActorLogging with Stash {
   val initializing: Receive = LoggingReceive {
     case positions: Positions =>
       unstashAll()
-      context.become(trading(State(positions, Map.empty, Map.empty, Map.empty, Map.empty, Map.empty)))
+      context.become(trading(State(positions, Map.empty, Map.empty, Map.empty)))
     case _ =>
       stash()
   }
 
   case class State(positions: Positions,
-                    pendingPostings: Accountant.PostingMap,
-                    pendingTrades: Accountant.TradeMap,
                     orderMap: Accountant.OrderMap,
                     orderActorMap: Accountant.OrderActorMap,
                     safePrices: Accountant.SafePriceMap)
 
   def trading(state: State): Receive = state match {
-    case State(positions, pendingPostings, pendingTrades, orderMap, orderActorMap, safePrices) =>
+    case State(positions, orderMap, orderActorMap, safePrices) =>
+      def validateOrder(order: Order): Boolean = {
+        if (order.price % order.contract.tickSize != 0 || order.price < 0 || order.quantity < 0)
+          false
+        else
+          order.contract.contractType match {
+            case ContractType.CASH_PAIR => order.quantity % order.contract.lotSize == 0
+            case ContractType.PREDICTION => 0 <= order.price && order.price <= order.contract.denominator
+          }
+      }
+
       def calculateMargin(order: Order, positionOverrides: Positions = Map(), cashOverrides: Positions = Map()) = {
         val usePositions = (positions ++ positionOverrides).withDefaultValue(0L)
         val useOrders = order :: orderMap.values.map(_._1).toList.filterNot(_.cancelled)
@@ -234,9 +302,9 @@ class Accountant(account: Account) extends Actor with ActorLogging with Stash {
         }
       }
 
-      def post(pendingPostings: Accountant.PostingMap, posting: Ledger.NewPosting): Accountant.PostingMap = {
-        ledger ! posting
-        pendingPostings + ((posting.uuid, posting.posting :: pendingPostings.getOrElse(posting.uuid, List[Posting]())))
+      def modifyPosition(positions: Positions, x: (Contract, Quantity)) = {
+        val (contract, change) = x
+        positions + ((contract, positions.getOrElse(contract, 0L) + change))
       }
 
       LoggingReceive {
@@ -260,57 +328,30 @@ class Accountant(account: Account) extends Actor with ActorLogging with Stash {
           }
 
         case Accountant.TradeNotify(t, side) =>
-          context.actorOf(PersistTrade.props(t, side))
+          context.actorOf(TradePoster.props(t, side, account))
 
-        case Accountant.TradePersisted(t, side) =>
-          val tradePersister = sender()
-          val myOrder = if (side == MAKER) t.passiveOrder else t.aggressiveOrder
-          val spent = myOrder.contract.getCashSpent(t.price, t.quantity)
-          val denominatedDirection = if (myOrder.side == BUY) DEBIT else CREDIT
-          val payoutDirection = if (myOrder.side == BUY) CREDIT else DEBIT
-          val userDenominatedPosting = Posting(myOrder.contract.denominated.get, account, t.quantity, denominatedDirection)
-          val userPayoutPosting = Posting(myOrder.contract.payout.get, account, spent, payoutDirection)
-          val uuid: UUID = t.uuid
+        case Accountant.Posted(posting) =>
+          val positionChange = (posting.contract, posting.signedQuantity)
+          val newPositions = modifyPosition(positions, positionChange)
+          context.become(trading(state.copy(positions = newPositions)))
 
-          val newPendingPostings = List(Ledger.NewPosting(4, userDenominatedPosting, uuid), Ledger.NewPosting(4, userPayoutPosting, uuid)).foldLeft(pendingPostings)(post)
-          val newPendingTrades = pendingTrades + ((uuid, (t, myOrder, tradePersister) :: pendingTrades.getOrElse(uuid, List[(Trade, Order, ActorRef)]())))
-          context.become(trading(state.copy(pendingPostings = newPendingPostings, pendingTrades = newPendingTrades)))
+        case Accountant.TradePosted(trade, postings, side) =>
+          val positionChanges = postings.map(posting => (posting.contract, posting.signedQuantity))
 
-        case Accountant.PostingResult(uuid, true) =>
-          val pendingForUuid = pendingPostings.getOrElse(uuid, List())
-          val positionChanges = pendingForUuid.map(pending => (pending.contract, pending.signedQuantity))
+          val newPositions = positionChanges.foldLeft(positions)(modifyPosition)
 
-          def modifyPositions(positions: Positions, x: (Contract, Quantity)) = {
-            val (contract, change) = x
-            positions + ((contract, positions.getOrElse(contract, 0L) + change))
-          }
-
-          val newPositions = positionChanges.foldLeft(positions)(modifyPositions)
-          val newPendingPostings = pendingPostings - uuid
-
-          def persistOrderUpdates(orderMap: Accountant.OrderMap, x: (Trade, Order, ActorRef)): Accountant.OrderMap = {
-            val (trade, order, persister) = x
+          def persistOrderAndUpdateMap(order: Order): Accountant.OrderMap = {
             val (oldOrder, persistRef) = orderMap(order._id)
 
             persistRef ! PersistOrder.UpdateOrder(trade.quantity)
-            orderMap.updated(order._id, (order.copy(quantity = order.quantity - trade.quantity), orderMap(order._id)._2))
+            orderMap.updated(order._id, (oldOrder.copy(quantity = order.quantity - trade.quantity), orderMap(order._id)._2))
           }
 
-          val newOrderMap = pendingTrades.getOrElse(uuid, List()).foldLeft(orderMap)(persistOrderUpdates)
-          pendingTrades.get(uuid) match {
-            case Some(l: List[(Trade, Order, ActorRef)]) =>
-              l.foreach {
-                case (trade, _, persister: ActorRef) =>
-                  persister ! PersistTrade.TradePosted
-              }
-            case None =>
-          }
-          val newPendingTrades = pendingTrades - uuid
-
-          context.become(trading(state.copy(positions = newPositions, orderMap = newOrderMap, pendingPostings = newPendingPostings, pendingTrades = newPendingTrades)))
-
-        case Accountant.TradePostedPersisted(trade) =>
+          val order = if (side == MAKER) trade.passiveOrder else trade.aggressiveOrder
+          val newOrderMap = persistOrderAndUpdateMap(order)
           SputnikEventBus.publish(trade)
+
+          context.become(trading(state.copy(positions = newPositions, orderMap = newOrderMap)))
 
         case Accountant.OrderCancelled(o) =>
           val (order, persistRef) = orderMap(o._id)
@@ -341,14 +382,16 @@ class Accountant(account: Account) extends Actor with ActorLogging with Stash {
           context.become(trading(state.copy(orderMap = newOrderMap, orderActorMap = newOrderActorMap)))
 
         case Accountant.PlaceOrderPersisted(o, requester) =>
-          if (checkMargin(o)) {
+          if (!validateOrder(o)) {
+            requester ! Accountant.InvalidOrder
+            sender() ! PersistOrder.CancelOrder
+          } else if (!checkMargin(o)) {
+            requester ! Accountant.InsufficientMargin
+            sender() ! PersistOrder.CancelOrder
+          } else {
             engineRouter ! Engine.PlaceOrder(o)
             sender() ! PersistOrder.AcceptOrder
             requester ! Accountant.OrderPlaced(o.copy(accepted=true))
-          }
-          else {
-            requester ! Accountant.InsufficientMargin
-            sender() ! PersistOrder.CancelOrder
           }
           SputnikEventBus.publish(o)
           context.become(trading(state.copy(orderMap = orderMap + (o._id -> (o, sender())), orderActorMap = orderActorMap + (sender() -> o._id))))
@@ -368,13 +411,11 @@ class Accountant(account: Account) extends Actor with ActorLogging with Stash {
           val myAccountPosting = Posting(contract, account, quantity, CREDIT)
           val remotePosting = Posting(contract, Account("cash", LedgerSide.ASSET), quantity, DEBIT)
           val uuid = UUID.randomUUID
-          val newPendingPostings = post(pendingPostings, Ledger.NewPosting(2, myAccountPosting, uuid))
+          context.actorOf(Poster.props(2, myAccountPosting, uuid))
           accountantRouter ! Accountant.NewPosting(2, remotePosting, uuid)
-          context.become(trading(state.copy(pendingPostings = newPendingPostings)))
 
         case Accountant.NewPosting(count, posting, uuid) =>
-          val newPendingPostings = post(pendingPostings, Ledger.NewPosting(count, posting, uuid))
-          context.become(trading(state.copy(pendingPostings = newPendingPostings)))
+          context.actorOf(Poster.props(count, posting, uuid))
 
       }
   }

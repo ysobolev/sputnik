@@ -64,23 +64,22 @@ class PersistJournal(journal: Journal) extends Actor with ActorLogging {
 class PostingGroup(uuid: UUID, count: Int) extends Actor with ActorLogging with Stash {
   val timeoutCancellable = context.system.scheduler.scheduleOnce(Duration.create(5, TimeUnit.SECONDS), self, PostingGroup.TimedOut)
 
-  def waitForPersist(journal: Journal, persister: ActorRef): Receive = LoggingReceive {
+  def waitForPersist(journal: Journal, persister: ActorRef, postings: List[(Posting, ActorRef)]): Receive = LoggingReceive {
     case PostingGroup.JournalPersisted =>
       context.parent ! Ledger.NewJournal(uuid, journal)
-      val accountants = journal.postings.map(_.account.name).toSet[String].map(a => context.system.actorSelection("/user/accountant/" + a))
-      accountants.foreach(_ ! Accountant.PostingResult(uuid, result = true))
+      postings.foreach(_._2 ! Accountant.PostingResult(uuid, result = true))
       journal.postings.foreach(SputnikEventBus.publish)
       context.stop(self)
     case Terminated(p) if p == persister =>
       context.unwatch(p)
   }
 
-  def state(postings: List[Posting]): Receive = {
-    def add(count: Int, posting: Posting): List[Posting] = {
+  def state(postings: List[(Posting, ActorRef)]): Receive = {
+    def add(count: Int, posting: Posting): List[(Posting, ActorRef)] = {
       if (count != this.count)
         throw new LedgerException("count mismatch")
       else {
-        posting :: postings
+        (posting, sender()) :: postings
       }
     }
 
@@ -88,7 +87,7 @@ class PostingGroup(uuid: UUID, count: Int) extends Actor with ActorLogging with 
 
     def toJournal(typ: String): Journal = {
       if (ready) {
-        val journal = new Journal(typ, postings)
+        val journal = new Journal(typ, postings.map(_._1))
         if (!journal.audit)
           throw new LedgerException("Journal fails audit")
         journal
@@ -103,15 +102,14 @@ class PostingGroup(uuid: UUID, count: Int) extends Actor with ActorLogging with 
       context.watch(persister)
       unstashAll()
       timeoutCancellable.cancel()
-      waitForPersist(journal, persister)
+      waitForPersist(journal, persister, postings)
     }
     else {
       LoggingReceive {
         case PostingGroup.AddPosting(c, p) =>
           context.become(state(add(c, p)))
         case PostingGroup.TimedOut =>
-          val accountants = postings.map(_.account.name).toSet[String].map(a => context.system.actorSelection("/user/accountant/" + a))
-          accountants.foreach(_ ! Accountant.PostingResult(uuid, result = false))
+          postings.foreach(_._2 ! Accountant.PostingResult(uuid, result = false))
 
         case msg =>
           log.debug(s"Stashing $msg")
@@ -186,9 +184,8 @@ class Ledger extends Actor with ActorLogging with Stash {
 
     LoggingReceive {
       case Ledger.NewPosting(count, posting, uuid) =>
-        val currentSender = sender()
         val newPending = if (!pending.contains(uuid)) pending + ((uuid, context.actorOf(PostingGroup.props(uuid, count), name = uuid.toString))) else pending
-        newPending(uuid) ! PostingGroup.AddPosting(count, posting)
+        newPending(uuid).tell(PostingGroup.AddPosting(count, posting), sender())
         context.become(active(ledger, newPending))
 
       case Ledger.GetPositions(user) =>

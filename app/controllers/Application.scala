@@ -122,6 +122,8 @@ class Application @Inject() (system: ActorSystem) extends Controller {
             Created(Json.toJson(order))
           case Accountant.InsufficientMargin =>
             BadRequest("Insufficient Margin")
+          case Accountant.InvalidOrder =>
+            BadRequest("Invalid Order")
         }
       case JsError(error) =>
         Future { BadRequest("Validation failed") }
