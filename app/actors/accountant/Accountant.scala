@@ -19,36 +19,105 @@ import scala.concurrent.ExecutionContext.Implicits.global
 
 class AccountantException(x: String) extends Exception(x)
 
+/** The Accountant ensures that the account is only able to place orders and withdrawals that it
+  * has the available margin to handle
+  *
+  */
 object Accountant
 {
   type OrderMap = Map[BSONObjectID, (Order, ActorRef)]
   type OrderMapClean = Map[BSONObjectID, Order]
   type SafePriceMap = Map[Contract, Price]
 
+  /** Attempt to place an order. Creates an OrderManager with the order and the sender.
+    *
+    * @param order
+    */
   case class PlaceOrder(order: Order)
-  case class UpdateOrderPersisted(order: Order, sender: ActorRef)
+
+  /** Attempt to cancel an order. Contacts the relevant OrderManager and sends it an
+    * OrderManager.CancelOrder
+    *
+    * @param account
+    * @param id
+    */
   case class CancelOrder(account: Account, id: BSONObjectID)
+
+  /** Notification that an order has been cancelled. Removes order from orderMap
+    *
+    * @param order
+    */
   case class OrderCancelled(order: Order)
 
+  /** Notification that a trade has taken place. Sends an OrderManager.TradeNotify to the OrderManager
+    * relevant to this trade
+    *
+    * @param trade
+    * @param side
+    */
   case class TradeNotify(trade: Trade, side: TradeSide = NULL)
 
+  /** Get the positions for this account. Returns the positions to the sender.
+    *
+    * @param account
+    */
   case class GetPositions(account: Account)
 
+  /** Get the orders for this account. Returns the cleaned orderMap (OrderMapClean)
+    *
+    * @param account
+    */
   case class GetOrders(account: Account)
 
+  /** Get an order by ID. If it is not in the ordermap, check the database
+    *
+    * @param account
+    * @param id
+    */
   case class GetOrder(account: Account, id: BSONObjectID)
 
   case class UpdateSafePrice(contract: Contract, safePrice: Price)
   case class UpdateSafePriceMap(safePrices: SafePriceMap)
 
+  /** Check to see if an order can be placed. If it can be placed, returns
+    * OrderManager.ValidOrder, if not, returns OrderManager.InvalidOrder
+    *
+    * @param order
+    */
   case class ValidateOrder(order: Order)
+
+  /** Possible invalid order types
+    *
+    */
   trait InvalidOrderTypes
   case object InsufficientMargin extends InvalidOrderTypes
   case object BadPriceQuantity extends InvalidOrderTypes
 
+  /** Deposits cash into the account. Creates a Poster for this account's
+    * posting, and sends a NewPosting to the accountantRouter for the other
+    * half of this posting
+    *
+    * @param account
+    * @param contract
+    * @param quantity
+    */
   case class DepositCash(account: Account, contract: Contract, quantity: Quantity)
+
+  /** Receives a posting and creates a Poster for it
+    *
+    * @param count
+    * @param posting
+    * @param uuid
+    */
   case class NewPosting(count: Int, posting: Posting, uuid: UUID)
 
+  /** Receives notification that a trade has been posted, including the originating
+    * order and the relevant postings that have been posted for that trade
+    *
+    * @param trade
+    * @param postings
+    * @param order
+    */
   case class TradePosted(trade: Trade, postings: Set[Posting], order: Order)
 
   def props(name: Account): Props = Props(new Accountant(name))

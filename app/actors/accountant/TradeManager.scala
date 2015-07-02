@@ -13,25 +13,40 @@ import reactivemongo.api.collections.default.BSONCollection
 import reactivemongo.bson.BSONDocument
 import scala.concurrent.ExecutionContext.Implicits.global
 
-object TradePoster {
-  def props(trade: Trade, side: TradeSide, account: Account) = Props(new TradePoster(trade, side, account))
+/** The TradeManager handles the lifecycle of a trade.
+  *
+  * * TradeNotify from the engine
+  * * Postings get sent to the ledger
+  * * Once the Ledger receives the full Journal entry, send the trade, postings, back to OrderManager, and shutdown
+  *
+  */
+object TradeManager {
+  def props(trade: Trade, side: TradeSide, account: Account) = Props(new TradeManager(trade, side, account))
+
+  /** Receive this message when the trade has been persisted
+    *
+    */
   case object TradePersisted
+
+  /** Receive this message when the posted state of the trade has been persisted
+    *
+    */
   case object TradePostedPersisted
 }
 
-class TradePoster(trade: Trade, side: TradeSide, account: Account) extends Actor with ActorLogging with Stash {
+class TradeManager(trade: Trade, side: TradeSide, account: Account) extends Actor with ActorLogging with Stash {
   val tradesColl = MongoFactory.database[BSONCollection](if (side == MAKER) "tradesMaker" else "tradesTaker")
   val query = BSONDocument("_id" -> trade._id)
 
   override def preStart(): Unit = {
     tradesColl.insert(trade).map { lastError =>
-      self ! TradePoster.TradePersisted
+      self ! TradeManager.TradePersisted
       unstashAll()
     }
   }
 
   def receive: Receive = {
-    case TradePoster.TradePersisted =>
+    case TradeManager.TradePersisted =>
       val tradePersister = sender()
       val myOrder = trade.orderBySide(side)
       val spent = myOrder.contract.getCashSpent(trade.price, trade.quantity)
@@ -48,7 +63,7 @@ class TradePoster(trade: Trade, side: TradeSide, account: Account) extends Actor
   def waitForPosted(tradePersister: ActorRef, postingsRemaining: Set[Posting], postingsPosted: Set[Posting]): Receive = {
     if (postingsRemaining.isEmpty) {
       tradesColl.update(query, trade.copy(posted=true)).map { lastError =>
-        self ! TradePoster.TradePostedPersisted
+        self ! TradeManager.TradePostedPersisted
       }
       waitForPersisted(postingsPosted)
     }
@@ -61,7 +76,7 @@ class TradePoster(trade: Trade, side: TradeSide, account: Account) extends Actor
   }
 
   def waitForPersisted(postings: Set[Posting]): Receive = {
-    case TradePoster.TradePostedPersisted =>
+    case TradeManager.TradePostedPersisted =>
       context.parent ! OrderManager.TradePosted(trade, postings, side)
       self ! PoisonPill
   }
