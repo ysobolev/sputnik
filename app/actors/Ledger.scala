@@ -6,6 +6,7 @@ package actors
 
 import java.util.UUID
 
+import actors.accountant.{Poster, Accountant}
 import akka.actor._
 import akka.event.LoggingReceive
 import com.github.nscala_time.time.Imports._
@@ -43,35 +44,16 @@ object PostingGroup {
 
 }
 
-object PersistJournal {
-  def props(journal: Journal): Props = Props(new PersistJournal(journal))
-}
-
-class PersistJournal(journal: Journal) extends Actor with ActorLogging {
-  val ledgerColl = MongoFactory.database[BSONCollection]("ledger")
-
-  override def preStart(): Unit = {
-    ledgerColl.insert(journal).map { lastError =>
-      context.parent ! PostingGroup.JournalPersisted
-      context.stop(self)
-    }
-  }
-  val receive: Receive = LoggingReceive {
-    case _ =>
-  }
-}
-
 class PostingGroup(uuid: UUID, count: Int) extends Actor with ActorLogging with Stash {
   val timeoutCancellable = context.system.scheduler.scheduleOnce(Duration.create(5, TimeUnit.SECONDS), self, PostingGroup.TimedOut)
+  val ledgerColl = MongoFactory.database[BSONCollection]("ledger")
 
-  def waitForPersist(journal: Journal, persister: ActorRef, postings: List[(Posting, ActorRef)]): Receive = LoggingReceive {
+  def waitForPersist(journal: Journal, postings: List[(Posting, ActorRef)]): Receive = LoggingReceive {
     case PostingGroup.JournalPersisted =>
       context.parent ! Ledger.NewJournal(uuid, journal)
-      postings.foreach(_._2 ! Accountant.PostingResult(uuid, result = true))
+      postings.foreach(_._2 ! Poster.PostingResult(uuid, result = true))
       journal.postings.foreach(SputnikEventBus.publish)
       context.stop(self)
-    case Terminated(p) if p == persister =>
-      context.unwatch(p)
   }
 
   def state(postings: List[(Posting, ActorRef)]): Receive = {
@@ -98,18 +80,19 @@ class PostingGroup(uuid: UUID, count: Int) extends Actor with ActorLogging with 
 
     if (ready) {
       val journal = toJournal("")
-      val persister = context.actorOf(PersistJournal.props(journal), name = "persist")
-      context.watch(persister)
+      ledgerColl.insert(journal).map { lastError =>
+        self ! PostingGroup.JournalPersisted
+      }
       unstashAll()
       timeoutCancellable.cancel()
-      waitForPersist(journal, persister, postings)
+      waitForPersist(journal, postings)
     }
     else {
       LoggingReceive {
         case PostingGroup.AddPosting(c, p) =>
           context.become(state(add(c, p)))
         case PostingGroup.TimedOut =>
-          postings.foreach(_._2 ! Accountant.PostingResult(uuid, result = false))
+          postings.foreach(_._2 ! Poster.PostingResult(uuid, result = false))
 
         case msg =>
           log.debug(s"Stashing $msg")

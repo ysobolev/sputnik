@@ -2,9 +2,10 @@
  * Created by sameer on 6/30/15.
  */
 
+import actors.accountant.Accountant
 import akka.actor.ActorSystem
 import models._
-import actors.{Accountant, OrderBookClassifier, SputnikEventBus, Engine}
+import actors.{OrderBookClassifier, SputnikEventBus, Engine}
 import org.scalatest.{WordSpecLike, WordSpec}
 import akka.testkit._
 

@@ -59,7 +59,7 @@ case class OrderBook(bids: SortedSet[Order], asks: SortedSet[Order], seenOrders:
               val priceTraded = best.price
               val newAggressive = order.copy(quantity = order.quantity - quantityTraded)
               val newPassive = best.copy(quantity = best.quantity - quantityTraded)
-              val fill = Trade(contract, order, best, quantityTraded, priceTraded)
+              val fill = Trade(contract, newAggressive, newPassive, quantityTraded, priceTraded)
               (Some(fill), newAggressive, newPassive)
             }
             else {

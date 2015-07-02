@@ -53,7 +53,7 @@ package object models {
 
   object TradeSide extends Enumeration {
     type TradeSide = Value
-    val MAKER, TAKER = Value
+    val MAKER, TAKER, NULL = Value
   }
 
   object ContractType extends Enumeration {

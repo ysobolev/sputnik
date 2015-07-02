@@ -1,5 +1,6 @@
 package actors
 
+import actors.accountant.Accountant
 import akka.actor.{Actor, ActorLogging, ActorRef, Props}
 import akka.event.LoggingReceive
 import models._

@@ -4,6 +4,7 @@
 package actors
 
 import actors.Engine._
+import actors.accountant.{OrderManager, Accountant}
 import akka.actor._
 import akka.event.LoggingReceive
 import akka.pattern._
@@ -51,7 +52,7 @@ class Engine(contract: Contract) extends LoggingFSM[State, Data] with Stash {
     case Event(PlaceOrder(order), data @ Initialized(orderBook: OrderBook, accountantRouter: ActorRef)) =>
       assert(order.contract == contract)
       val (newOrderBook, orders, trades) = orderBook.placeOrder(order)
-      sender() ! Accountant.OrderBooked(order)
+      sender() ! OrderManager.OrderBooked
       trades.foreach((x) => accountantRouter ! Accountant.TradeNotify(x))
       SputnikEventBus.publish(newOrderBook)
       goto(Trading) using data.copy(orderBook = newOrderBook)
@@ -59,7 +60,7 @@ class Engine(contract: Contract) extends LoggingFSM[State, Data] with Stash {
       assert(c == contract)
       orderBook.getOrderById(id) match {
         case Some(order) =>
-          accountantRouter ! Accountant.OrderCancelled(order.copy(quantity = 0))
+          accountantRouter ! OrderManager.OrderCancelled
           val newOrderBook = orderBook.cancelOrder(id)
           SputnikEventBus.publish(newOrderBook)
           goto(Trading) using data.copy(orderBook = newOrderBook)

@@ -1,6 +1,7 @@
 package controllers
 
-import actors.Accountant.OrderMapClean
+import actors.accountant.{OrderManager, Accountant}
+import Accountant.OrderMapClean
 import play.api.libs.json._
 import play.api.mvc._
 import play.api.Play.current
@@ -14,11 +15,8 @@ import reactivemongo.bson.BSONObjectID
 import scala.concurrent.duration._
 import scala.concurrent._
 import akka.util.Timeout
-import actors.Accountant
 
 import akka.actor.{ Actor, DeadLetter, Props }
-
-import scala.util.Success
 
 class DeadLetterListener extends Actor {
   def receive = {
@@ -118,11 +116,11 @@ class Application @Inject() (system: ActorSystem) extends Controller {
           placeOrderResult <- accountantRouter ? Accountant.PlaceOrder(order)
         } yield placeOrderResult
         res.map {
-          case Accountant.OrderPlaced(order) =>
+          case OrderManager.OrderPlaced(order) =>
             Created(Json.toJson(order))
           case Accountant.InsufficientMargin =>
             BadRequest("Insufficient Margin")
-          case Accountant.InvalidOrder =>
+          case Accountant.BadPriceQuantity =>
             BadRequest("Invalid Order")
         }
       case JsError(error) =>
