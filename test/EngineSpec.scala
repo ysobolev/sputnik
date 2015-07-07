@@ -34,7 +34,7 @@ class EngineSpec extends TestKit(ActorSystem("testSystem")) with WordSpecLike wi
       val engine = TestFSMRef(new Engine(btcusd))
       val accountantProbe = TestProbe()
       engine ! Engine.SetAccountantRouter(accountantProbe.ref)
-      SputnikEventBus.subscribe(testActor, OrderBookClassifier(Some(btcusd)))
+      SputnikEventBus.subscribe(testActor, OrderBookClassifier(Set(btcusd)))
       engine ! Engine.PlaceOrder(buy100At100)
       "have that order in the book" in {
         val book = engine.stateData match {
@@ -57,7 +57,7 @@ class EngineSpec extends TestKit(ActorSystem("testSystem")) with WordSpecLike wi
       val engine = TestFSMRef(new Engine(btcusd))
       val accountantProbe = TestProbe()
       engine ! Engine.SetAccountantRouter(accountantProbe.ref)
-      SputnikEventBus.subscribe(testActor, OrderBookClassifier(Some(btcusd)))
+      SputnikEventBus.subscribe(testActor, OrderBookClassifier(Set(btcusd)))
       engine ! Engine.PlaceOrder(buy100At100)
       engine ! Engine.PlaceOrder(sell100At50)
       "have an empty book" in {
@@ -87,7 +87,7 @@ class EngineSpec extends TestKit(ActorSystem("testSystem")) with WordSpecLike wi
       val engine = TestFSMRef(new Engine(btcusd))
       val accountantProbe = TestProbe()
       engine ! Engine.SetAccountantRouter(accountantProbe.ref)
-      SputnikEventBus.subscribe(testActor, OrderBookClassifier(Some(btcusd)))
+      SputnikEventBus.subscribe(testActor, OrderBookClassifier(Set(btcusd)))
       engine ! Engine.PlaceOrder(buy100At100)
       engine ! Engine.CancelOrder(btcusd, buy100At100._id)
       "have an empty book" in {

@@ -41,17 +41,53 @@ class Application @Inject() (system: ActorSystem) extends Controller {
   def index = Action {
     Ok(views.html.index("Your new application is ready."))
   }
+  // This is req'd, don't optimize away
+  import play.modules.reactivemongo.json.BSONFormats._
+
+  implicit val orderWrites = Json.writes[Order]
+  implicit val tradeFeedWrites = Json.writes[TradeFeed]
+  implicit val pqWrites = Json.writes[PriceQuantity]
+  implicit val aggregatedOrderBookWrites = Json.writes[AggregatedOrderBook]
+  implicit val postingWrites = Json.writes[Posting]
 
   def orderBookSocket(ticker: String) = WebSocket.acceptWithActor[JsValue, JsValue] { request => out =>
-    OrderBookSocketActor.props(out, ticker)
+    FeedSocketActor.props[AggregatedOrderBook](out, OrderBookClassifier.apply, aggregatedOrderBookWrites, account = None, contract = Some(ticker))
   }
 
   def tradesByAccountSocket(account: String) = WebSocket.acceptWithActor[JsValue, JsValue] { request => out =>
-    TradeSocketActor.props(out, account = Some(account), contract = None)
+    FeedSocketActor.props[TradeFeed](out, TradeClassifier.apply, tradeFeedWrites, account = Some(account), contract = None)
   }
 
   def tradesByContractSocket(contract: String) = WebSocket.acceptWithActor[JsValue, JsValue] { request => out =>
-    TradeSocketActor.props(out, account = None, contract = Some(contract))
+    FeedSocketActor.props[TradeFeed](out, TradeClassifier.apply, tradeFeedWrites, account = None, contract = Some(contract))
+  }
+
+  def tradesSocket(account: String, contract: String) = WebSocket.acceptWithActor[JsValue, JsValue] { request => out =>
+    FeedSocketActor.props[TradeFeed](out, TradeClassifier.apply, tradeFeedWrites, account = Some(account), contract = Some(contract))
+  }
+
+  def ordersByAccountSocket(account: String) = WebSocket.acceptWithActor[JsValue, JsValue] { request => out =>
+    FeedSocketActor.props[Order](out, OrderClassifier.apply, orderWrites, account = Some(account), contract = None)
+  }
+
+  def ordersByContractSocket(contract: String) = WebSocket.acceptWithActor[JsValue, JsValue] { request => out =>
+    FeedSocketActor.props[Order](out, OrderClassifier.apply, orderWrites, account = None, contract = Some(contract))
+  }
+
+  def ordersSocket(account: String, contract: String) = WebSocket.acceptWithActor[JsValue, JsValue] { request => out =>
+    FeedSocketActor.props[Order](out, OrderClassifier.apply, orderWrites, account = Some(account), contract = Some(contract))
+  }
+
+  def postingsByAccountSocket(account: String) = WebSocket.acceptWithActor[JsValue, JsValue] { request => out =>
+    FeedSocketActor.props[Posting](out, PostingClassifier.apply, postingWrites, account = Some(account), contract = None)
+  }
+
+  def postingsByContractSocket(contract: String) = WebSocket.acceptWithActor[JsValue, JsValue] { request => out =>
+    FeedSocketActor.props[Posting](out, PostingClassifier.apply, postingWrites, account = None, contract = Some(contract))
+  }
+
+  def postingsSocket(account: String, contract: String) = WebSocket.acceptWithActor[JsValue, JsValue] { request => out =>
+    FeedSocketActor.props[Posting](out, PostingClassifier.apply, postingWrites, account = Some(account), contract = Some(contract))
   }
 
   def getContracts = Action.async {

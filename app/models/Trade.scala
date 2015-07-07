@@ -45,7 +45,7 @@ case class Trade(contract: Contract,
                  timestamp: DateTime = DateTime.now,
                  uuid: UUID = UUID.randomUUID,
                  _id: BSONObjectID = BSONObjectID.generate,
-                 posted: Boolean = false) extends SputnikEvent {
+                 posted: Boolean = false) extends SputnikEvent[TradeFeed] {
 
   implicit def toFeed = TradeFeed(contract, quantity, price, timestamp)
   def orderBySide(s: TradeSide): Order = s match {
@@ -59,4 +59,4 @@ object TradeFeed {
   implicit val tradeFeedFormat = Json.format[TradeFeed]
 }
 
-case class TradeFeed(contract: Contract, quantity: Quantity, price: Price, timestamp: DateTime)
+case class TradeFeed(contract: Contract, quantity: Quantity, price: Price, timestamp: DateTime) extends FeedMsg

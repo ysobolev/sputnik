@@ -16,9 +16,9 @@ object AggregatedOrderBook {
   implicit val aggregatedOrderBookFormat = Json.format[AggregatedOrderBook]
 }
 
-case class AggregatedOrderBook(contract: Contract, bids: List[PriceQuantity], asks: List[PriceQuantity])
+case class AggregatedOrderBook(contract: Contract, bids: List[PriceQuantity], asks: List[PriceQuantity]) extends FeedMsg
 
-case class OrderBook(bids: SortedSet[Order], asks: SortedSet[Order], seenOrders: Set[BSONObjectID], contract: Contract) extends SputnikEvent {
+case class OrderBook(bids: SortedSet[Order], asks: SortedSet[Order], seenOrders: Set[BSONObjectID], contract: Contract) extends SputnikEvent[AggregatedOrderBook] {
   def this(contract: Contract) = {
     this(SortedSet(), SortedSet(), Set(), contract)
   }
@@ -90,7 +90,7 @@ case class OrderBook(bids: SortedSet[Order], asks: SortedSet[Order], seenOrders:
   override def toString =
     "OrderBook(Bids(" + bids + "), Asks(" + asks + "))"
 
-  def aggregate: AggregatedOrderBook = {
+  def toFeed: AggregatedOrderBook = {
     val bidsAggregate = bids.groupBy(x => x.price).mapValues(_.toList.map(_.quantity).sum).map { case (p, q) => PriceQuantity(p, q) }.toList
     val asksAggregate = asks.groupBy(x => x.price).mapValues(_.toList.map(_.quantity).sum).map { case (p, q) => PriceQuantity(p, q) }.toList
     AggregatedOrderBook(contract, bidsAggregate, asksAggregate)

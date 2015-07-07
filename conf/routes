@@ -3,20 +3,30 @@
 # ~~~~
 
 # Home page
-GET           /                                  controllers.Application.index
+GET           /                                     controllers.Application.index
 
 # Map static resources from the /public folder to the /assets URL path
-GET           /assets/*file                      controllers.Assets.versioned(path="/public", file: Asset)
+GET           /assets/*file                         controllers.Assets.versioned(path="/public", file: Asset)
 
 #
-POST          /orders                            controllers.Application.placeOrder
-GET           /orders/*account                   controllers.Application.getOrders(account: String)
-GET           /orders/*account/*id               controllers.Application.getOrder(account: String, id: String)
-DELETE        /orders/*account/*id               controllers.Application.cancelOrder(account: String, id: String)
-GET           /positions/*account                controllers.Application.getPositions(account: String)
-GET           /contracts                         controllers.Application.getContracts
+POST          /orders                               controllers.Application.placeOrder
+GET           /orders/*account                      controllers.Application.getOrders(account: String)
+GET           /orders/*account/*id                  controllers.Application.getOrder(account: String, id: String)
+DELETE        /orders/*account/*id                  controllers.Application.cancelOrder(account: String, id: String)
+GET           /positions/*account                   controllers.Application.getPositions(account: String)
+GET           /contracts                            controllers.Application.getContracts
 
 # Websocket RT data feeds
-GET           /ws/orderBook/*ticker              controllers.Application.orderBookSocket(ticker: String)
-GET           /ws/tradeByAccount/*account        controllers.Application.tradesByAccountSocket(account: String)
-GET           /ws/tradeByContract/*ticker        controllers.Application.tradesByContractSocket(ticker: String)
+GET           /ws/orderBook/*ticker                 controllers.Application.orderBookSocket(ticker: String)
+
+GET           /ws/tradesByAccount/*account          controllers.Application.tradesByAccountSocket(account: String)
+GET           /ws/tradesByContract/*ticker          controllers.Application.tradesByContractSocket(ticker: String)
+GET           /ws/trades/*account/*ticker           controllers.Application.tradesSocket(account: String, ticker: String)
+
+GET           /ws/ordersByAccount/*account          controllers.Application.ordersByAccountSocket(account: String)
+GET           /ws/ordersByContract/*ticker          controllers.Application.ordersByContractSocket(ticker: String)
+GET           /ws/orders/*account/*ticker           controllers.Application.ordersSocket(account: String, ticker: String)
+
+GET           /ws/postingsByAccount/*account        controllers.Application.postingsByAccountSocket(account: String)
+GET           /ws/postingsByContract/*ticker        controllers.Application.postingsByContractSocket(ticker: String)
+GET           /ws/postings/*account/*ticker         controllers.Application.postingsSocket(account: String, ticker: String)
