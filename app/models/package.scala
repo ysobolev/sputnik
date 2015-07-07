@@ -64,12 +64,16 @@ package object models {
   implicit val contractTypeFormat= EnumUtils.enumFormat(ContractType)
   implicit val bookSideFormat = EnumUtils.enumFormat(BookSide)
   implicit val ledgerSideFormat = EnumUtils.enumFormat(LedgerSide)
+  implicit val ledgerDirectionFormat = EnumUtils.enumFormat(LedgerDirection)
 
   trait Nameable {
     def name: String
   }
 
-  trait SputnikEvent
+  trait FeedMsg
+  trait SputnikEvent[+FeedType <: FeedMsg] {
+    def toFeed: FeedType
+  }
 
   implicit object DatetimeReader extends BSONReader[BSONDateTime, DateTime]{
     def read(bson: BSONDateTime): DateTime = new DateTime(bson.value)

@@ -23,7 +23,7 @@ object Journal {
 case class Journal(typ: String,
                    postings: List[Posting],
                    timestamp: DateTime = DateTime.now,
-                   _id: BSONObjectID = BSONObjectID.generate) extends SputnikEvent {
+                   _id: BSONObjectID = BSONObjectID.generate) {
 
   def audit: Boolean = postings.groupBy(_.contract).forall {
     case (c: Contract, l: List[Posting]) =>

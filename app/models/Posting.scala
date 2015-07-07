@@ -1,9 +1,11 @@
 package models
 
 import com.github.nscala_time.time.Imports._
+import play.api.libs.json.Json
 import reactivemongo.bson.{BSONDocumentReader, BSONDocument, BSONDocumentWriter}
 
 object Posting {
+  implicit val postingFormat = Json.format[Posting]
 
   implicit object PostingWriter extends BSONDocumentWriter[Posting] {
     def write(posting: Posting): BSONDocument = BSONDocument(
@@ -29,7 +31,7 @@ case class Posting(contract: Contract,
                    account: Account,
                    quantity: Quantity,
                    direction: LedgerDirection.LedgerDirection,
-                   timestamp: DateTime = DateTime.now) extends SputnikEvent {
+                   timestamp: DateTime = DateTime.now) extends SputnikEvent[Posting] with FeedMsg {
   require(contract.contractType != ContractType.CASH_PAIR)
 
   lazy val sign = {
@@ -44,5 +46,7 @@ case class Posting(contract: Contract,
     user_sign * dir_sign
   }
   lazy val signedQuantity = sign * quantity
+
+  def toFeed: Posting = this
 }
 

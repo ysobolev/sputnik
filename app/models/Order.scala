@@ -63,6 +63,7 @@ object Order {
     )
   }
 }
+
 case class Order(quantity: Quantity,
                  price: Price,
                  timestamp: DateTime,
@@ -72,7 +73,7 @@ case class Order(quantity: Quantity,
                  _id: BSONObjectID = BSONObjectID.generate,
                  accepted: Boolean = false,
                  booked: Boolean = false,
-                 cancelled: Boolean = false) extends Ordered[Order] with SputnikEvent {
+                 cancelled: Boolean = false) extends Ordered[Order] with SputnikEvent[Order] with FeedMsg {
   private val sign = if (side == BookSide.BUY) -1 else 1
 
   def matches(that: Order): Boolean = (this.side != that.side) && (sign * (this.price - that.price) <= 0)
@@ -92,4 +93,6 @@ case class Order(quantity: Quantity,
     else
       throw new OrderException("can't compare buy and sell")
 
+  def toFeed: Order = this
 }
+
