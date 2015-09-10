@@ -633,6 +633,8 @@ def main():
         elif mode == "build-deps":
             installer.make_build_deps()
         elif mode == "deps":
+            installer.logfile.close()
+            installer.logfile = open("install.deps.log", "a")
             installer.make_deps()
         elif mode == "build":
             installer.make_build()
