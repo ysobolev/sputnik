@@ -19,10 +19,10 @@ from txzmq import ZmqSubConnection, ZmqPubConnection
 from twisted.internet import reactor
 from twisted.internet.defer import Deferred, maybeDeferred
 
-import observatory
+from sputnik import observatory
 
 debug, log, warn, error, critical = observatory.get_loggers("zmq")
-from exception import *
+from sputnik.exception import *
 
 class ComponentExport():
     def __init__(self, component):

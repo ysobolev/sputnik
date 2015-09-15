@@ -6,16 +6,16 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 #
-from sendmail import Sendmail
+from sputnik.util.sendmail import Sendmail
 from twisted.internet import reactor
 from twisted.internet.task import LoopingCall
 from twisted.python import log
 from sys import stdin, stdout
-import config
+from sputnik import config
 import os
 import __main__ as main
 from supervisor import childutils
-from zmq_util import export, pull_share_async, push_proxy_async, ComponentExport
+from spuntik.rpc.zmq_util import export, pull_share_async, push_proxy_async, ComponentExport
 import collections
 
 

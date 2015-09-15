@@ -51,22 +51,22 @@ from dateutil import parser
 from datetime import timedelta
 from autobahn.wamp.auth import derive_key, compute_totp, generate_totp_secret
 from twisted.web.static import File
-import config
-import database
-import models
-from util import ChainedOpenSSLContextFactory
-import util
-from sendmail import Sendmail
-from watchdog import watchdog
-from accountant import AccountantProxy
-from exception import *
-from zmq_util import export, router_share_async, dealer_proxy_async, push_proxy_async, ComponentExport
-from rpc_schema import schema
+from sputnik import config
+from sputnik.database import database
+from sputnik.database import models
+from sputnik.util.util import ChainedOpenSSLContextFactory
+from sputnik.util import util
+from sputnik.util.sendmail import Sendmail
+from sputnik.alerts.watchdog import watchdog
+from sputnik.accounant.accountant import AccountantProxy
+from spputnik.exception import *
+from sputnik.rpc.zmq_util import export, router_share_async, dealer_proxy_async, push_proxy_async, ComponentExport
+from sputnik.rpc.rpc_schema import schema
 from dateutil import relativedelta
-from zendesk import Zendesk
-from blockscore import BlockScore
-from ticketserver import TicketServer
-from bitgo import BitGo
+from sputnik.administrator.zendesk import Zendesk
+from sputnik.administrator.blockscore import BlockScore
+from sputnik.administrator.ticketserver import TicketServer
+from sputnik.administrator.bitgo import BitGo
 import base64
 from Crypto.Random.random import getrandbits
 import urllib
@@ -95,7 +95,7 @@ TOTP_ALREADY_ENABLED = AdministratorException("exceptions/administrator/totp_alr
 BITGO_TOKEN_INVALID = AdministratorException("exceptions/administrator/bitgo_token_invalid")
 KEY_FILE_EXISTS = AdministratorException("exceptions/bitgo/key_file_exists")
 
-from util import session_aware
+from sputnik.util.util import session_aware
 
 
 class Administrator:

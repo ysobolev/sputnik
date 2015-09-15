@@ -7,7 +7,7 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 #
 
-import config
+from sputnik import config
 
 from optparse import OptionParser
 parser = OptionParser()
@@ -29,16 +29,16 @@ For now this just means pinging the accountant regularly to see if everyone's ma
 
 
 from sqlalchemy.orm.exc import NoResultFound
-import models
-import database
-import margin
-import util
-from sendmail import Sendmail
-from accountant import AccountantProxy
+from sputnik.database import models
+from sputnik.database import database
+from sputnik.accountant import margin
+from sputnik.util import util
+from sputnik.util.sendmail import Sendmail
+from sputnik.accountant.accountant import AccountantProxy
 
 from twisted.python import log
 from twisted.internet import reactor
-from zmq_util import connect_subscriber
+from sputnik.rpc.zmq_util import connect_subscriber
 import json
 from jinja2 import Environment, FileSystemLoader
 import time

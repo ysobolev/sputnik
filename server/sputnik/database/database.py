@@ -10,7 +10,7 @@
 Provides a common access to the database and a session object
 """
 
-import config
+from sputnik import config
 
 import sqlalchemy
 from sqlalchemy.ext.declarative import declarative_base

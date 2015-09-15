@@ -11,7 +11,7 @@ __author__ = 'sameer'
 from datetime import datetime
 from twisted.internet import ssl
 from OpenSSL import SSL
-import models
+from sputnik.database import models
 import sys
 import math
 import time
@@ -20,8 +20,7 @@ from sqlalchemy.orm.exc import NoResultFound
 from sqlalchemy import func
 from twisted.python import log
 import twisted.python.util
-import models
-from zmq_util import ComponentExport
+from sputnik.rpc.zmq_util import ComponentExport
 from sqlalchemy.orm.session import Session
 import hashlib
 from decimal import Decimal

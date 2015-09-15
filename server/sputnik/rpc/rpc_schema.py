@@ -6,7 +6,7 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 #
 
-import config
+from sputnik import config
 import os
 import inspect
 import json

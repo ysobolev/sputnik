@@ -7,7 +7,7 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 #
 
-import config
+from sputnik import config
 
 from optparse import OptionParser
 
@@ -23,19 +23,19 @@ import json
 import heapq
 import math
 
-import database
-import models
-import accountant
+from sputnik.database import database
+from sputnil.database import models
+from sputnik.accounant import accountant
 
-import util
+from sputnik.util import util
 
 from twisted.internet import reactor
 from twisted.python import log
-from zmq_util import export, router_share_async, push_proxy_async, ComponentExport, connect_publisher
-from rpc_schema import schema
+from sputnik.rpc.zmq_util import export, router_share_async, push_proxy_async, ComponentExport, connect_publisher
+from sputnik.rpc.rpc_schema import schema
 from collections import defaultdict
 from datetime import datetime
-from watchdog import watchdog
+from sputnik.alerts.watchdog import watchdog
 
 
 class OrderSide:

@@ -7,7 +7,7 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 #
 
-import config
+from sputnik import config
 from optparse import OptionParser
 parser = OptionParser()
 parser.add_option("-c", "--config", dest="filename",
@@ -23,7 +23,7 @@ A small fowarding service, every engine publishes their safe price to the fronte
 and every safe price consumer subscribes to this device.
 """
 
-from zmq_util import bind_subscriber, bind_publisher
+from sputnik.rpc.zmq_util import bind_subscriber, bind_publisher
 from twisted.internet import reactor
 from twisted.python import log
 import json

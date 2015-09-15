@@ -20,10 +20,9 @@ administrator. It is responsible for the following:
 import sys
 from optparse import OptionParser
 
-import config
-from rpc_schema import schema
+from sputnik import config
+from sputnik.rpc.rpc_schema import schema
 
-from optparse import OptionParser
 from decimal import Decimal
 
 parser = OptionParser()
@@ -33,17 +32,17 @@ parser.add_option("-c", "--config", dest="filename",
 if options.filename:
     config.reconfigure(options.filename)
 
-import database
-import models
-import margin
-import util
-import ledger
-from alerts import AlertsProxy
-from sendmail import Sendmail
+from sputnik.database import database
+from sputnik.database import models
+from sputnik.accountant import margin
+from sputnik.util import util
+from sputnik.ledger import ledger
+from sputnik.alerts.alerts import AlertsProxy
+from sputnik.util.sendmail import Sendmail
 
-from ledger import create_posting
+from sputnik.ledger.ledger import create_posting
 
-from zmq_util import export, dealer_proxy_async, router_share_async, pull_share_async, \
+from sputnik.rpc.zmq_util import export, dealer_proxy_async, router_share_async, pull_share_async, \
     push_proxy_async, RemoteCallTimedOut, RemoteCallException, ComponentExport
 
 from twisted.internet import reactor, defer, task
@@ -51,12 +50,12 @@ from twisted.python import log
 from sqlalchemy.orm.exc import NoResultFound
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy import func
-from watchdog import watchdog
+from sputnik.alerts.watchdog import watchdog
 from jinja2 import Environment, FileSystemLoader
 
 import time
 from datetime import datetime
-from util import session_aware
+from sputnik.util.util import session_aware
 from exception import *
 
 INSUFFICIENT_MARGIN = AccountantException("exceptions/accountant/insufficient_margin")

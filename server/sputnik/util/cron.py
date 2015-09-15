@@ -14,8 +14,8 @@ import sys
 from twisted.python import log
 from twisted.internet import reactor
 
-import config
-from zmq_util import dealer_proxy_async
+from sputnik import config
+from sputnik.rpc.zmq_util import dealer_proxy_async
 import argparse
 
 

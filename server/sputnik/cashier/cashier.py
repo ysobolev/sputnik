@@ -25,21 +25,21 @@ from Crypto.Random.random import getrandbits
 from jinja2 import Environment, FileSystemLoader
 import markdown
 
-import config
-from txbitcoinrpc import BitcoinRpc
-from compropago import Compropago
-from watchdog import watchdog
-from sendmail import Sendmail
-from accountant import AccountantProxy
-from alerts import AlertsProxy
-import util
-from zmq_util import router_share_async, pull_share_async, export, ComponentExport
-import models
-import database as db
-from rpc_schema import schema
-from util import session_aware
-from exception import *
-from bitgo import BitGo
+from sputnik import config
+from sputnik.rpc.txbitcoinrpc import BitcoinRpc
+from sputnik.cashier.compropago import Compropago
+from sputnik.watchdog import watchdog
+from sputnik.sendmail import Sendmail
+from sputnik.accountant import AccountantProxy
+from sputnik.alerts.alerts import AlertsProxy
+from sputnik.util import util
+from sputnik.rpc.zmq_util import router_share_async, pull_share_async, export, ComponentExport
+from sputnik.database import models
+from sputnik.database import database as db
+from sputnik.rpc.rpc_schema import schema
+from sputnik.util.util import session_aware
+from sputnik.exception import *
+from sputnik.util.bitgo import BitGo
 from pycoin.key.validate import is_address_valid
 
 

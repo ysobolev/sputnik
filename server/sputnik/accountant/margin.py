@@ -8,8 +8,8 @@
 
 __author__ = 'arthurb'
 
-import models
-import util
+from sputnik.database import models
+from sputnik.util import util
 import collections
 
 from twisted.python import log
