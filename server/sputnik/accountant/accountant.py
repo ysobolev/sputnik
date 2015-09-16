@@ -50,7 +50,7 @@ from twisted.python import log
 from sqlalchemy.orm.exc import NoResultFound
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy import func
-from sputnik.alerts.watchdog import watchdog
+from sputnik.watchdog import watchdog
 from jinja2 import Environment, FileSystemLoader
 
 import time
@@ -1791,7 +1791,7 @@ class AccountantProxy:
 
         return routed_method
 
-if __name__ == "__main__":
+def main():
     log.startLogging(sys.stdout)
     accountant_number = int(args[0])
     num_procs = config.getint("accountant", "num_procs")

@@ -57,7 +57,7 @@ from sputnik.database import models
 from sputnik.util.util import ChainedOpenSSLContextFactory
 from sputnik.util import util
 from sputnik.util.sendmail import Sendmail
-from sputnik.alerts.watchdog import watchdog
+from sputnik.watchdog import watchdog
 from sputnik.accounant.accountant import AccountantProxy
 from spputnik.exception import *
 from sputnik.rpc.zmq_util import export, router_share_async, dealer_proxy_async, push_proxy_async, ComponentExport

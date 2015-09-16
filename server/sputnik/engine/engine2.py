@@ -35,7 +35,7 @@ from sputnik.rpc.zmq_util import export, router_share_async, push_proxy_async, C
 from sputnik.rpc.rpc_schema import schema
 from collections import defaultdict
 from datetime import datetime
-from sputnik.alerts.watchdog import watchdog
+from sputnik.watchdog import watchdog
 
 
 class OrderSide:

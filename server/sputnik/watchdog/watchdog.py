@@ -8,14 +8,14 @@
 #
 
 import sys
-import zmq_util
+from sputnik.rpc import zmq_util
 from twisted.internet import reactor
 from twisted.python import log
 from datetime import datetime
-import config
-from alerts import AlertsProxy
-import database
-import models
+from sputnik import config
+from sputnik.alerts.alerts import AlertsProxy
+from sputnik.database import database
+from sputnik.database import models
 
 
 class WatchdogExport(object):
@@ -59,7 +59,7 @@ class Watchdog():
         log.msg("Watchdog %s starting" % self.name)
         self.schedule_ping()
 
-if __name__ == "__main__":
+def main():
     log.startLogging(sys.stdout)
     monitors = ["administrator", "cashier", "ledger", "webserver"]
     session = database.make_session()
