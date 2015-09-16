@@ -6,6 +6,8 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 #
+
+from __future__ import absolute_import
 from sputnik.util.sendmail import Sendmail
 from twisted.internet import reactor
 from twisted.internet.task import LoopingCall
@@ -13,9 +15,9 @@ from twisted.python import log
 from sys import stdin, stdout
 from sputnik import config
 import os
-import __main__ as main
+import __main__
 from supervisor import childutils
-from spuntik.rpc.zmq_util import export, pull_share_async, push_proxy_async, ComponentExport
+from sputnik.rpc.zmq_util import export, pull_share_async, push_proxy_async, ComponentExport
 import collections
 
 
@@ -58,10 +60,10 @@ class AlertsProxy():
         self.socket = push_proxy_async(zmq_export)
 
     def send_alert(self, message, subject="No subject"):
-        program = os.path.basename(main.__file__)
+        program = os.path.basename(__main__.__file__)
         self.socket.send_alert(message, "%s: %s" % (program, subject))
 
-if __name__ == "__main__":
+def main():
     log.startLogging(stdout)
     from_address = config.get("alerts", "from")
     to_address = config.get("alerts", "to")
