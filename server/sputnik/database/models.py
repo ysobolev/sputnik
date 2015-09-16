@@ -14,7 +14,7 @@ from sqlalchemy.types import Enum, DateTime, Interval
 from sputnik.database import database as db
 from datetime import datetime, date, timedelta
 from sqlalchemy import Column, Integer, String, BigInteger, schema, Boolean, sql
-from sputnik.util import util
+import sputnik.util.conversions as util
 import hashlib
 import base64
 import collections
