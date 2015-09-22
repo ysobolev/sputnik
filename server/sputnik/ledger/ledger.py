@@ -22,7 +22,7 @@ from sqlalchemy.exc import SQLAlchemyError, DBAPIError
 from sqlalchemy.sql import select
 
 from sputnik import config
-from sputnik.util import util
+from sputnik.util.conversions import dt_to_timestamp, timestamp_to_dt
 from sputnik.database import database
 from sputnik.database.models import Posting, Journal, User, Contract
 from sputnik.rpc.zmq_util import router_share_async, export, ComponentExport
@@ -168,7 +168,7 @@ class Ledger:
                 direction = posting["direction"]
                 note = posting["note"]
                 if posting["timestamp"] is not None:
-                    timestamp = util.timestamp_to_dt(posting["timestamp"])
+                    timestamp = timestamp_to_dt(posting["timestamp"])
                 else:
                     timestamp = None
 
@@ -271,7 +271,7 @@ class AccountantExport(ComponentExport):
 
 def create_posting(type, username, contract, quantity, direction, note=None, timestamp=None):
     if timestamp is None:
-        timestamp = util.dt_to_timestamp(datetime.datetime.utcnow())
+        timestamp = dt_to_timestamp(datetime.datetime.utcnow())
 
     return {"username":username, "contract":contract, "quantity":quantity,
             "direction":direction, "note": note, "type": type, "timestamp": timestamp}

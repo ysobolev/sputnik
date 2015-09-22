@@ -29,8 +29,8 @@ from sputnik import config
 from sputnik.rpc.txbitcoinrpc import BitcoinRpc
 from sputnik.cashier.compropago import Compropago
 from sputnik.watchdog import watchdog
-from sputnik.sendmail import Sendmail
-from sputnik.accountant import AccountantProxy
+from sputnik.util.sendmail import Sendmail
+from sputnik.accountant.accountant import AccountantProxy
 from sputnik.alerts.alerts import AlertsProxy
 from sputnik.util import util
 from sputnik.rpc.zmq_util import router_share_async, pull_share_async, export, ComponentExport

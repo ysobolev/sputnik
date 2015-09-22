@@ -1,1 +1,1 @@
-../../bitgo/bitgo.py
+../../../bitgo/bitgo.py

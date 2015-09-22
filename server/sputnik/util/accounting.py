@@ -13,6 +13,7 @@ from sqlalchemy import func
 from twisted.python import log
 from decimal import Decimal
 import sputnik.database.models as models
+from sputnik.util.conversions import timestamp_to_dt
 
 def get_cash_spent(contract, price, quantity):
     if contract.contract_type == "futures" or contract.contract_type == "prediction":

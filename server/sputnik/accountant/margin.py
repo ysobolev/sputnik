@@ -9,7 +9,7 @@
 __author__ = 'arthurb'
 
 from sputnik.database import models
-from sputnik.util import util
+from sputnik.util import accounting
 import collections
 
 from twisted.python import log
@@ -136,10 +136,10 @@ def calculate_margin(user, session, safe_prices={}, order_id=None, withdrawals=N
 
     # Deal with cash_pair orders separately because there are no cash_pair positions
     for order in open_orders:
-        fees = util.get_fees(user, order.contract, order.price, order.quantity, trial_period=trial_period)
+        fees = accounting.get_fees(user, order.contract, order.price, order.quantity, trial_period=trial_period)
         
         if order.contract.contract_type == 'cash_pair':
-            transaction_size = util.get_cash_spent(order.contract, order.price, order.quantity)
+            transaction_size = accounting.get_cash_spent(order.contract, order.price, order.quantity)
             
             if order.side == 'BUY':
                 max_cash_spent[order.contract.denominated_contract.ticker] += transaction_size

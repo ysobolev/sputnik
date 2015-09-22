@@ -18,6 +18,7 @@ administrator. It is responsible for the following:
 """
 
 import sys
+import pkg_resources
 from optparse import OptionParser
 
 from sputnik import config
@@ -36,6 +37,7 @@ from sputnik.database import database
 from sputnik.database import models
 from sputnik.accountant import margin
 from sputnik.util import util
+from sputnik.util import conversions
 from sputnik.ledger import ledger
 from sputnik.alerts.alerts import AlertsProxy
 from sputnik.util.sendmail import Sendmail
@@ -56,6 +58,7 @@ from jinja2 import Environment, FileSystemLoader
 import time
 from datetime import datetime
 from sputnik.util.util import session_aware
+from sputnik.util import accounting
 from sputnik.exception import *
 
 INSUFFICIENT_MARGIN = AccountantException("exceptions/accountant/insufficient_margin")
@@ -82,7 +85,7 @@ class Accountant:
     """
     def __init__(self, session, engines, cashier, ledger, webserver, accountant_proxy,
                  alerts_proxy, accountant_number=0, debug=False, trial_period=False,
-                 mimetic_share=0.5, sendmail=None, template_dir='admin_templates'):
+                 mimetic_share=0.5, sendmail=None):
         """Initialize the Accountant
 
         :param session: The SQL Alchemy session
@@ -121,7 +124,7 @@ class Accountant:
         self.disabled_users = {}
         self.clearing_contracts = {}
         self.accountant_number = accountant_number
-        self.jinja_env = Environment(loader=FileSystemLoader(template_dir))
+        self.jinja_env = Environment(loader=FileSystemLoader(pkg_resources.resource_filename("sputnik.templates", None)))
         self.sendmail = sendmail
 
     def post_or_fail(self, *postings):
@@ -261,7 +264,7 @@ class Accountant:
         :raises: AccountantException
         """
         try:
-            return util.get_contract(self.session, ticker)
+            return accounting.get_contract(self.session, ticker)
         except:
             raise AccountantException("No such contract: '%s'." % ticker)
 
@@ -390,9 +393,9 @@ class Accountant:
             trade_price = best_bid
 
         if position.contract.contract_type == "futures":
-            cash_spent = util.get_cash_spent(position.contract, trade_price - position.reference_price, quantity)
+            cash_spent = accounting.get_cash_spent(position.contract, trade_price - position.reference_price, quantity)
         else:
-            cash_spent = util.get_cash_spent(position.contract, trade_price, quantity)
+            cash_spent = accounting.get_cash_spent(position.contract, trade_price, quantity)
 
         cash_position = self.get_position_value(position.username, position.contract.denominated_contract)
         cash_override = {position.contract.denominated_contract_ticker: cash_position - cash_spent}
@@ -507,7 +510,7 @@ class Accountant:
                 'contract': position.contract.ticker,
                 'side': side,
                 'username': position.username,
-                'timestamp': util.dt_to_timestamp(datetime.utcnow())
+                'timestamp': conversions.dt_to_timestamp(datetime.utcnow())
             }
             log.msg("Placing liquidation order: %s" % order)
             id = self.place_order(position.username, order, force=True)
@@ -733,7 +736,7 @@ class Accountant:
                 denominated_contract = contract.denominated_contract
                 payout_contract = contract
                 position = self.get_position(user, contract, price)
-                cash_spent = util.get_cash_spent(contract, price - position.reference_price, quantity)
+                cash_spent = accounting.get_cash_spent(contract, price - position.reference_price, quantity)
 
                 # Make sure the position goes into the db with this reference price
                 self.session.add(position)
@@ -742,7 +745,7 @@ class Accountant:
                 self.session.rollback()
                 log.err("Unable to add position %s to db" % position)
         else:
-            cash_spent = util.get_cash_spent(contract, price, quantity)
+            cash_spent = accounting.get_cash_spent(contract, price, quantity)
 
 
         user_denominated = create_posting("Trade", username,
@@ -764,7 +767,7 @@ class Accountant:
 
         # calculate fees
         fees = {}
-        fees = util.get_fees(user, contract,
+        fees = accounting.get_fees(user, contract,
                 price, quantity, trial_period=self.trial_period, ap="aggressive" if aggressive else "passive")
 
 
@@ -839,8 +842,8 @@ class Accountant:
             for notification in notifications:
                 if notification.method == 'email':
                     t = util.get_locale_template(user.locale, self.jinja_env, 'fill.{locale}.email')
-                    content = t.render(user=user, contract=contract, id=order, quantity=quantity, quantity_fmt=util.quantity_fmt(contract, quantity),
-                                       price=price, price_fmt=util.price_fmt(contract, price), side=side, timestamp=util.timestamp_to_dt(timestamp)).encode('utf-8')
+                    content = t.render(user=user, contract=contract, id=order, quantity=quantity, quantity_fmt=conversions.quantity_fmt(contract, quantity),
+                                       price=price, price_fmt=conversions.price_fmt(contract, price), side=side, timestamp=conversions.timestamp_to_dt(timestamp)).encode('utf-8')
 
                     # Now email the token
                     log.msg("Sending mail: %s" % content)
@@ -992,7 +995,7 @@ class Accountant:
             log.msg("Forcing order")
 
         o = models.Order(user, contract, order["quantity"], order["price"], order["side"].upper(),
-                         timestamp=util.timestamp_to_dt(order['timestamp']))
+                         timestamp=conversions.timestamp_to_dt(order['timestamp']))
         try:
             self.session.add(o)
             self.session.commit()
@@ -1090,7 +1093,7 @@ class Accountant:
                 log.msg("Insufficient margin for withdrawal %d / %d" % (low_margin, high_margin))
                 raise INSUFFICIENT_MARGIN
             else:
-                fees = util.get_withdraw_fees(user, contract, amount, trial_period=self.trial_period)
+                fees = accounting.get_withdraw_fees(user, contract, amount, trial_period=self.trial_period)
 
                 amount -= fees[ticker]
                 if amount < 0:
@@ -1143,7 +1146,7 @@ class Accountant:
 
         # Now email the notification
         t = util.get_locale_template(user.locale, self.jinja_env, 'deposit_overflow.{locale}.email')
-        content = t.render(user=user, contract=contract, amount_fmt=util.quantity_fmt(contract, amount)).encode('utf-8')
+        content = t.render(user=user, contract=contract, amount_fmt=conversions.quantity_fmt(contract, amount)).encode('utf-8')
 
         # Now email the token
         log.msg("Sending mail: %s" % content)
@@ -1247,7 +1250,7 @@ class Accountant:
                 self.notify_deposit_overflow(user, contract, excess_deposit)
 
             # Deposit Fees
-            fees = util.get_deposit_fees(user, contract, deposit, trial_period=self.trial_period)
+            fees = accounting.get_deposit_fees(user, contract, deposit, trial_period=self.trial_period)
             user_postings, vendor_postings, remainder_postings = self.charge_fees(fees, user, type="Deposit")
 
             my_postings.extend(user_postings)
@@ -1387,7 +1390,7 @@ class Accountant:
             for position in user.positions:
                 if position.pending_postings == 0:
                     # position has settled, sync with ledger
-                    position.position, position.cp_timestamp = util.position_calculated(position, self.session)
+                    position.position, position.cp_timestamp = accounting.position_calculated(position, self.session)
                     position.position_checkpoint = position.position
                     # self.session.add(position)
                 else:
@@ -1493,12 +1496,12 @@ class Accountant:
 
     def clear_position(self, position, price, position_count, uid, zero_out=True):
         # We use position_calculated here to be sure we get the canonical position
-        position_calculated, timestamp = util.position_calculated(position, self.session)
+        position_calculated, timestamp = accounting.position_calculated(position, self.session)
         log.msg("Clearing position %s at %d" % (position, price))
         if position.contract.contract_type == "prediction":
-            cash_spent = util.get_cash_spent(position.contract, price, position_calculated)
+            cash_spent = accounting.get_cash_spent(position.contract, price, position_calculated)
             note = "Clearing transaction for %s at price: %s" % (position.contract.ticker,
-                                                                 util.price_fmt(position.contract, price))
+                                                                 conversions.price_fmt(position.contract, price))
             credit = create_posting("Clearing", position.username,
                     position.contract.denominated_contract.ticker, cash_spent, 'credit',
                     note)
@@ -1518,10 +1521,10 @@ class Accountant:
                 log.err("Position %s has no reference price!")
                 return defer.succeed(None)
 
-            cash_spent = util.get_cash_spent(position.contract, price - position.reference_price, position_calculated)
+            cash_spent = accounting.get_cash_spent(position.contract, price - position.reference_price, position_calculated)
             note = "Clearing transaction for %s at price: %s / reference_price: %s" % (position.contract.ticker,
-                                                                                       util.price_fmt(position.contract, price),
-                                                                                       util.price_fmt(position.contract, position.reference_price))
+                                                                                       conversions.price_fmt(position.contract, price),
+                                                                                       conversions.price_fmt(position.contract, position.reference_price))
             credit = create_posting("Clearing", position.username,
                                     position.contract.denominated_contract_ticker, cash_spent, 'credit',
                                     note)

@@ -303,7 +303,7 @@ class FakeSendmail(FakeComponent):
         FakeComponent.__init__(self, "sendmail")
 
 def fix_config():
-    spec_dir = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "server", "sputnik", "specs"))
+    spec_dir = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "specs"))
     test_config = "[database]\nuri = sqlite://\n[specs]\nschema_root=%s\n[accountant]\nnum_proces = 0\n" % \
             spec_dir
     from sputnik import config
