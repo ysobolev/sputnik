@@ -14,15 +14,12 @@ from test_sputnik import fix_config, TestSputnik, FakeComponent
 from twisted.internet import defer, reactor, task
 from pprint import pprint
 
-sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                             "../server"))
-sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                             "../tools"))
 
 fix_config()
 
-from sputnik import models, margin
-
+from sputnik.database import models
+from sputnik.accountant import margin
+from sputnik.util.accounting import get_fees, get_withdraw_fees, get_deposit_fees
 
 class TestFees(TestSputnik):
     def setUp(self):
@@ -47,8 +44,6 @@ contracts set MXN withdraw_base_fee 100
         self.run_leo(fees_init)
 
     def test_trade_fees(self):
-        from sputnik import util
-
         BTCMXN = self.get_contract('BTC/MXN')
         NETS2015 = self.get_contract('NETS2015')
         BTCHUF = self.get_contract('BTC/HUF')
@@ -71,7 +66,7 @@ contracts set MXN withdraw_base_fee 100
                         payout_contract = contract.payout_contract
                         quantity = cash_spent * contract.denominator * payout_contract.denominator / price
 
-                    fees_result[(user.username, contract.ticker, ap)] = util.get_fees(user, contract, price, quantity,
+                    fees_result[(user.username, contract.ticker, ap)] = get_fees(user, contract, price, quantity,
                                                                                       ap=ap)
 
         self.assertDictEqual(fees_result, {(u'customer', u'BTC/HUF', None): {u'HUF': 10000000},
@@ -125,22 +120,20 @@ contracts set MXN withdraw_base_fee 100
         )
 
     def test_deposit_withdraw_fees(self):
-        from sputnik import util
-
         marketmaker = self.get_user('marketmaker')
         randomtrader = self.get_user('randomtrader')
         m2 = self.get_user('m2')
         customer = self.get_user('customer')
 
         MXN = self.get_contract('MXN')
-        fees_result = {user.username: util.get_withdraw_fees(user, MXN, 1000000) for user in
+        fees_result = {user.username: get_withdraw_fees(user, MXN, 1000000) for user in
                        [marketmaker, randomtrader, m2, customer]}
         self.assertDictEqual(fees_result, {u'customer': {u'MXN': 10100},
                                            u'm2': {u'MXN': 0},
                                            u'marketmaker': {u'MXN': 10100},
                                            u'randomtrader': {u'MXN': 20200}})
 
-        fees_result = {user.username: util.get_deposit_fees(user, MXN, 1000000) for user in
+        fees_result = {user.username: get_deposit_fees(user, MXN, 1000000) for user in
                        [marketmaker, randomtrader, m2, customer]}
         self.assertDictEqual(fees_result, {u'customer': {u'MXN': 20050},
                                            u'm2': {u'MXN': 0},
