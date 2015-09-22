@@ -18,6 +18,11 @@ from twisted.web.server import NOT_DONE_YET
 from datetime import datetime, timedelta
 import copy
 
+from sputnik.engine import engine2
+from sputnik.util.conversions import dt_to_timestamp
+from sputnik.database import database, models
+from sputnik.tools import leo
+
 logging.basicConfig(level=1000)
 
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)),
@@ -205,7 +210,6 @@ class FakeComponent:
     @staticmethod
     def check(arg, arg_compare):
         def same(a, b):
-            from sputnik import engine2
             if isinstance(a, engine2.Order) and isinstance(b, engine2.Order):
                 return a.side == b.side and a.price == b.price \
                            and a.quantity == b.quantity and a.quantity_left == b.quantity_left
@@ -286,9 +290,8 @@ class FakeBitgo(FakeComponent):
     def authenticateWithAuthCode(self, code):
         self._log_call("authenticateWithAuthCode", code)
         expiry = datetime.utcnow() + timedelta(days=1)
-        from sputnik import util
         return defer.succeed({'access_token': 'TOKEN',
-                              'expires_at': util.dt_to_timestamp(expiry)/1e6})
+                              'expires_at': dt_to_timestamp(expiry)/1e6})
 
 class FakeSendmail(FakeComponent):
     def __init__(self, from_address):
@@ -315,23 +318,17 @@ class TestSputnik(unittest.TestCase):
         os.chdir(os.path.dirname(os.path.abspath(__file__)))
         fix_config()
 
-        from sputnik import database, models
-
         self.session = database.make_session()
-
-        import leo
 
         self.leo = leo.LowEarthOrbit(self.session)
         self.run_leo(db_init)
 
     def get_position(self, ticker):
-        from sputnik import models
         contract = self.session.query(models.Contract).filter_by(ticker=ticker).one()
         position = self.session.query(models.Position).filter_by(user=self.user, contract=contract).one()
         return position
 
     def create_position(self, ticker, quantity, reference_price=None):
-        from sputnik import models
         contract = self.session.query(models.Contract).filter_by(ticker=ticker).one()
         from sqlalchemy.orm.exc import NoResultFound
         try:
@@ -349,7 +346,6 @@ class TestSputnik(unittest.TestCase):
         self.session.commit()
 
     def create_order(self, ticker, quantity, price, side, accepted=True):
-        from sputnik import models
         contract = self.session.query(models.Contract).filter_by(ticker=ticker).one()
         order = models.Order(self.user, contract, quantity, price, side)
         order.accepted = accepted
@@ -358,7 +354,6 @@ class TestSputnik(unittest.TestCase):
         return order.id
 
     def cancel_order(self, id):
-        from sputnik import models
         order = self.session.query(models.Order).filter_by(id=id).one()
         order.is_cancelled = True
         self.session.commit()
@@ -381,12 +376,10 @@ class TestSputnik(unittest.TestCase):
             self.add_address(username, address, currency=currency)
 
     def get_user(self, username):
-        from sputnik import models
         user = self.session.query(models.User).filter_by(username=username).one()
         return user
 
     def get_contract(self, ticker):
-        from sputnik import models
         contract = self.session.query(models.Contract).filter_by(ticker=ticker).one()
         return contract
 

@@ -24,10 +24,12 @@ import heapq
 import math
 
 from sputnik.database import database
-from sputnil.database import models
-from sputnik.accounant import accountant
+from sputnik.database import models
+from sputnik.accountant import accountant
 
-from sputnik.util import util
+from sputnik.util.conversions import dt_to_timestamp
+from sputnik.util.debug import timed
+from sputnik.util.util import get_uid
 
 from twisted.internet import reactor
 from twisted.python import log
@@ -63,7 +65,7 @@ class Order:
         if timestamp is not None:
             self.timestamp = timestamp
         else:
-            self.timestamp = util.dt_to_timestamp(datetime.utcnow())
+            self.timestamp = dt_to_timestamp(datetime.utcnow())
 
     def to_administrator(self):
         return {'id': self.id,
@@ -134,7 +136,7 @@ class Engine:
         self.ordermap = {}
         self.listeners = []
 
-    @util.timed
+    @timed
     def place_order(self, order):
 
         # Loop until the order or the opposite side is exhausted.
@@ -190,7 +192,7 @@ class Engine:
 
         return price, quantity
 
-    @util.timed
+    @timed
     def cancel_order(self, id):
         # Check to make sure order has not already been filled.
         if id not in self.ordermap:
@@ -353,7 +355,7 @@ class AccountantNotifier(EngineListener):
         pass
 
     def on_trade_success(self, order, passive_order, price, quantity):
-        uid = util.get_uid()
+        uid = get_uid()
         self.accountant.post_transaction(order.username,
                                          {
                                              'username': order.username,

@@ -9,21 +9,17 @@
 import sys
 import os
 import copy
-from test_sputnik import TestSputnik, FakeComponent
+from sputnik.test.test_sputnik import TestSputnik, FakeComponent
 from twisted.internet import defer
 from pprint import pprint
-
-sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                             "../server"))
-sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                             "../tools"))
-
+from sputnik.database import models
+from sputnik.engine import engine2
+from sputnik.accountant import accountant
+from sputnik.engine.engine2 import Order
 
 class TestEngine(TestSputnik):
     def setUp(self):
         TestSputnik.setUp(self)
-
-        from sputnik import engine2
 
         self.engine = engine2.Engine()
         self.fake_listener = FakeComponent("listener")
@@ -33,7 +29,6 @@ class TestEngine(TestSputnik):
         self.administrator_export = engine2.AdministratorExport(self.engine)
 
     def create_order(self, quantity=None, price=None, side=None):
-        from sputnik.engine2 import Order
 
         self.order_counter += 1
         return Order(id=self.order_counter, contract="FOO", quantity=quantity,
@@ -239,8 +234,6 @@ class TestNotifier(TestEngine):
     def setUp(self):
         TestEngine.setUp(self)
 
-        from sputnik import engine2, models
-
         self.contract = models.Contract("FOO")
 
         self.order = engine2.Order(id=1, contract=self.contract.ticker, quantity=10,
@@ -254,8 +247,6 @@ class TestNotifier(TestEngine):
 class TestAccountantNotifier(TestNotifier):
     def setUp(self):
         TestNotifier.setUp(self)
-        from sputnik import engine2
-        from sputnik import accountant
 
         self.accountant = accountant.EngineExport(FakeComponent("accountant"))
         self.accountant_notifier = engine2.AccountantNotifier(self.engine, self.accountant, self.contract)
@@ -289,7 +280,6 @@ class TestAccountantNotifier(TestNotifier):
 class TestWebserverNotifier(TestNotifier):
     def setUp(self):
         TestNotifier.setUp(self)
-        from sputnik import engine2
 
         self.webserver = FakeComponent()
         self.webserver_notifier = engine2.WebserverNotifier(self.engine, self.webserver, self.contract, reg_publish=False)

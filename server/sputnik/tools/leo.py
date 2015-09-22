@@ -19,7 +19,7 @@ sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)),
     "../server"))
 
 from sputnik import config
-from sputnik import database, models
+from sputnik.database import database, models
 from sqlalchemy.orm.exc import NoResultFound
 from dateutil import parser
 from datetime import timedelta, datetime

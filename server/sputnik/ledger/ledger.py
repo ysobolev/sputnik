@@ -25,8 +25,8 @@ from sputnik import config
 from sputnik.util import util
 from sputnik.database import database
 from sputnik.database.models import Posting, Journal, User, Contract
-from sputnik.rpc.mq_util import router_share_async, export, ComponentExport
-from sputnik.util.util import timed
+from sputnik.rpc.zmq_util import router_share_async, export, ComponentExport
+from sputnik.util.debug import timed
 from sputnik.rpc.rpc_schema import schema
 from sputnik.watchdog import watchdog
 import time

@@ -7,6 +7,7 @@
 #
 
 import time
+from twisted.python import log
 
 def timed(f):
     def wrapped(*args, **kwargs):
