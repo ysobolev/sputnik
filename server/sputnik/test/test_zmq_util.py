@@ -12,14 +12,12 @@ from twisted.trial import unittest
 from twisted.internet import task, reactor
 import sys
 import os
-
-sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                             "../server"))
+import random
+from sputnik.rpc import zmq_util
 
 class TestExport:
     test_function_argument = None
 
-    from sputnik import zmq_util
     @zmq_util.export
     def test_function(self, success):
         self.test_function_argument = success
@@ -30,8 +28,6 @@ class TestExport:
 
 class TestAsyncRouterDealer(unittest.TestCase):
     def setUp(self):
-        from sputnik import zmq_util
-        import random
         port = random.randint(50000, 60000)
         self.dealer_proxy = zmq_util.dealer_proxy_async("tcp://127.0.0.1:%d" % port, timeout=None)
         self.router_share = zmq_util.router_share_async(TestExport(), "tcp://127.0.0.1:%d" % port)
@@ -79,8 +75,6 @@ class TestSyncRouterDealer(unittest.TestCase):
 
 class TestAsyncPushPull(unittest.TestCase):
     def setUp(self):
-        from sputnik import zmq_util
-        import random
         port = random.randint(50000, 60000)
         self.push_proxy = zmq_util.push_proxy_async("tcp://127.0.0.1:%d" % port)
         self.export = TestExport()
