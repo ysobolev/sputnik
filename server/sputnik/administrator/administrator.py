@@ -20,6 +20,7 @@ import sys
 import os
 import collections
 from datetime import datetime
+import pkg_resources
 import json
 import copy
 import string
@@ -54,19 +55,20 @@ from twisted.web.static import File
 from sputnik import config
 from sputnik.database import database
 from sputnik.database import models
-from sputnik.util.util import ChainedOpenSSLContextFactory
-from sputnik.util import util
+from sputnik.util.ssl import ChainedOpenSSLContextFactory
+from sputnik.util.debug import timed
+from sputnik.util import util, accounting, conversions
 from sputnik.util.sendmail import Sendmail
 from sputnik.watchdog import watchdog
-from sputnik.accounant.accountant import AccountantProxy
-from spputnik.exception import *
+from sputnik.accountant.accountant import AccountantProxy
+from sputnik.exception import *
 from sputnik.rpc.zmq_util import export, router_share_async, dealer_proxy_async, push_proxy_async, ComponentExport
 from sputnik.rpc.rpc_schema import schema
 from dateutil import relativedelta
 from sputnik.administrator.zendesk import Zendesk
 from sputnik.administrator.blockscore import BlockScore
 from sputnik.administrator.ticketserver import TicketServer
-from sputnik.administrator.bitgo import BitGo
+from sputnik.util.bitgo import BitGo
 import base64
 from Crypto.Random.random import getrandbits
 import urllib
@@ -106,7 +108,7 @@ class Administrator:
     def __init__(self, session, accountant, cashier, engines,
                  zendesk_domain, accountant_slow, webserver,
                  debug=False, base_uri=None, sendmail=None,
-                 template_dir='admin_templates',
+                 template_dir=pkg_resources.resource_filename("sputnik.templates", None),
                  user_limit=500,
                  bitgo=None,
                  bitgo_private_key_file=None,
@@ -292,11 +294,11 @@ class Administrator:
             raise NO_SUCH_USER
 
         user.api_key = base64.b64encode(("%064X" % getrandbits(256)).decode("hex"))
-        user.api_expiration = util.timestamp_to_dt(expiration)
+        user.api_expiration = conversions.timestamp_to_dt(expiration)
         user.api_secret = base64.b64encode(("%064X" % getrandbits(256)).decode("hex"))
 
         self.session.commit()
-        return {'key': user.api_key, 'secret': user.api_secret, 'expiration': util.dt_to_timestamp(user.api_expiration)}
+        return {'key': user.api_key, 'secret': user.api_secret, 'expiration': conversions.dt_to_timestamp(user.api_expiration)}
 
     def check_and_update_api_nonce(self, username, nonce):
         user = self.session.query(models.User).filter_by(username=username).one()
@@ -593,8 +595,8 @@ class Administrator:
             today_bod = datetime(now.year, now.month, now.day)
             yesterday_eod = today_bod - timedelta(microseconds=1)
 
-            from_timestamp = util.dt_to_timestamp(yesterday_bod)
-            to_timestamp = util.dt_to_timestamp(yesterday_eod)
+            from_timestamp = conversions.dt_to_timestamp(yesterday_bod)
+            to_timestamp = conversions.dt_to_timestamp(yesterday_eod)
         elif period == "weekly":
             recent_sunday = now + relativedelta.relativedelta(weekday=relativedelta.SU(-1))
             second_recent_sunday = now + relativedelta.relativedelta(weekday=relativedelta.SU(-2))
@@ -602,16 +604,16 @@ class Administrator:
             this_week_start = datetime(recent_sunday.year, recent_sunday.month, recent_sunday.day)
             last_week_end = this_week_start - timedelta(microseconds=1)
 
-            from_timestamp = util.dt_to_timestamp(last_week_start)
-            to_timestamp = util.dt_to_timestamp(last_week_end)
+            from_timestamp = conversions.dt_to_timestamp(last_week_start)
+            to_timestamp = conversions.dt_to_timestamp(last_week_end)
         elif period == "monthly":
             last_month = now + relativedelta.relativedelta(months=-1)
             last_month_bom = datetime(last_month.year, last_month.month, 1)
             this_month_bom = datetime(now.year, now.month, 1)
             last_month_eom = this_month_bom - timedelta(microseconds=1)
 
-            from_timestamp = util.dt_to_timestamp(last_month_bom)
-            to_timestamp = util.dt_to_timestamp(last_month_eom)
+            from_timestamp = conversions.dt_to_timestamp(last_month_bom)
+            to_timestamp = conversions.dt_to_timestamp(last_month_eom)
         else:
             raise AdministratorException("Period not supported: %s" % period)
 
@@ -625,7 +627,7 @@ class Administrator:
 
         return user_list
 
-    @util.timed
+    @timed
     def mail_statement(self, username, from_timestamp=None, to_timestamp=None):
         now = datetime.utcnow()
         user = self.get_user(username)
@@ -633,12 +635,12 @@ class Administrator:
         if to_timestamp is None:
             end = now
         else:
-            end = util.timestamp_to_dt(to_timestamp)
+            end = conversions.timestamp_to_dt(to_timestamp)
 
         if from_timestamp is None:
             start = end + relativedelta.relativedelta(months=-1)
         else:
-            start = util.timestamp_to_dt(from_timestamp)
+            start = conversions.timestamp_to_dt(from_timestamp)
 
         log.msg("mailing statement for %s from %s to %s" % (username, start, end))
 
@@ -674,9 +676,9 @@ class Administrator:
                 'totals_by_type': collections.defaultdict(int),
                 'totals_by_type_fmt': {},
                 'beginning_balance': running_balance,
-                'beginning_balance_fmt': util.quantity_fmt(contract, running_balance),
+                'beginning_balance_fmt': conversions.quantity_fmt(contract, running_balance),
                 'ending_balance': running_balance,
-                'ending_balance_fmt': util.quantity_fmt(contract, running_balance)
+                'ending_balance_fmt': conversions.quantity_fmt(contract, running_balance)
             }
             # Get transactions during period
             transactions = self.session.query(models.Posting, models.Journal).filter(
@@ -704,21 +706,21 @@ class Administrator:
                 details[contract.ticker]['transactions'].append({'contract': contract.ticker,
                                                                          'timestamp': transaction.Journal.timestamp,
                                                                          'quantity': abs(transaction.Posting.quantity),
-                                                                         'quantity_fmt': util.quantity_fmt(
+                                                                         'quantity_fmt': conversions.quantity_fmt(
                                                                              contract,
                                                                              abs(transaction.Posting.quantity)),
                                                                          'direction': direction,
                                                                          'balance': running_balance,
-                                                                         'balance_fmt': util.quantity_fmt(
+                                                                         'balance_fmt': conversions.quantity_fmt(
                                                                              contract, running_balance),
                                                                          'note': transaction.Posting.note,
                                                                          'type': transaction.Journal.type
                 })
                 details[contract.ticker]['ending_balance'] = running_balance
-                details[contract.ticker]['ending_balance_fmt'] = util.quantity_fmt(contract, running_balance)
+                details[contract.ticker]['ending_balance_fmt'] = conversions.quantity_fmt(contract, running_balance)
 
             for type, total in details[contract.ticker]['totals_by_type'].iteritems():
-                details[contract.ticker]['totals_by_type_fmt'][type] = util.quantity_fmt(contract, total)
+                details[contract.ticker]['totals_by_type_fmt'][type] = conversions.quantity_fmt(contract, total)
 
         t = self.jinja_env.get_template('transaction_statement.email')
         content = t.render(user=user,
@@ -908,17 +910,17 @@ class Administrator:
                     order_book[order.side][id_str]['errors'] = 'Not In Book'
                 else:
                     if order.quantity_left != order_book[order.side][id_str]['quantity_left']:
-                        order_book[order.side][id_str]['errors'] = 'DB quantity_left: %s' % util.quantity_fmt(contract,
+                        order_book[order.side][id_str]['errors'] = 'DB quantity_left: %s' % conversions.quantity_fmt(contract,
                                                                                                               order.quantity_left)
 
             for side, orders in order_book.iteritems():
                 for id, order in orders.iteritems():
-                    order['timestamp'] = util.timestamp_to_dt(order['timestamp'])
+                    order['timestamp'] = conversions.timestamp_to_dt(order['timestamp'])
                     if id not in ordermap:
                         order['errors'] = "Not in DB"
-                    order["quantity_fmt"] = util.quantity_fmt(contract, order['quantity'])
-                    order["quantity_left_fmt"] = util.quantity_fmt(contract, order['quantity_left'])
-                    order["price_fmt"] = util.price_fmt(contract, order['price'])
+                    order["quantity_fmt"] = conversions.quantity_fmt(contract, order['quantity'])
+                    order["quantity_left_fmt"] = conversions.quantity_fmt(contract, order['quantity_left'])
+                    order["price_fmt"] = conversions.price_fmt(contract, order['price'])
 
             return order_book
 
@@ -932,9 +934,9 @@ class Administrator:
         BTC = self.get_contract('BTC')
         for user in users.filter_by(type='Liability'):
             def fmt(margin):
-                margin['low_margin_fmt'] = util.quantity_fmt(BTC, margin['low_margin'])
-                margin['high_margin_fmt'] = util.quantity_fmt(BTC, margin['high_margin'])
-                margin['cash_position_fmt'] = util.quantity_fmt(BTC, margin['cash_position'])
+                margin['low_margin_fmt'] = conversions.quantity_fmt(BTC, margin['low_margin'])
+                margin['high_margin_fmt'] = conversions.quantity_fmt(BTC, margin['high_margin'])
+                margin['cash_position_fmt'] = conversions.quantity_fmt(BTC, margin['cash_position'])
                 return margin
 
             d = self.accountant_slow.get_margin(user.username)
@@ -978,8 +980,8 @@ class Administrator:
         :param quantity_ui: the delta in user friendly units
         :type quantity_ui: int
         """
-        contract = util.get_contract(self.session, ticker)
-        quantity = util.quantity_to_wire(contract, quantity_ui)
+        contract = accounting.get_contract(self.session, ticker)
+        quantity = conversions.quantity_to_wire(contract, quantity_ui)
 
         log.msg("Calling adjust position for %s: %s/%d" % (username, ticker, quantity))
         return self.accountant.adjust_position(username, ticker, quantity, admin_username)
@@ -993,15 +995,15 @@ class Administrator:
 
     @inlineCallbacks
     def transfer_from_multisig_wallet(self, ticker, quantity_ui, destination="offlinecash", multisig={}):
-        contract = util.get_contract(self.session, ticker)
-        quantity = util.quantity_to_wire(contract, quantity_ui)
+        contract = accounting.get_contract(self.session, ticker)
+        quantity = conversions.quantity_to_wire(contract, quantity_ui)
         result = yield self.cashier.transfer_from_multisig_wallet(ticker, quantity, multisig=multisig, destination=destination)
         returnValue(result)
 
     @inlineCallbacks
     def transfer_from_hot_wallet(self, ticker, quantity_ui, destination="offlinecash"):
-        contract = util.get_contract(self.session, ticker)
-        quantity = util.quantity_to_wire(contract, quantity_ui)
+        contract = accounting.get_contract(self.session, ticker)
+        quantity = conversions.quantity_to_wire(contract, quantity_ui)
         result = yield self.cashier.transfer_from_hot_wallet(ticker, quantity, destination=destination)
         returnValue(result)
 
@@ -1017,8 +1019,8 @@ class Administrator:
         :param quantity_ui: how much are we transferring in user friendly units
         :type quantity_ui: int
         """
-        contract = util.get_contract(self.session, ticker)
-        quantity = util.quantity_to_wire(contract, quantity_ui)
+        contract = accounting.get_contract(self.session, ticker)
+        quantity = conversions.quantity_to_wire(contract, quantity_ui)
 
         log.msg("Transferring %d of %s from %s to %s" % (
             quantity, ticker, from_user, to_user))
@@ -1054,10 +1056,10 @@ class Administrator:
                                         subject='Expired contracts')
 
     def clear_contract(self, ticker, price_ui=None):
-        contract = util.get_contract(self.session, ticker)
+        contract = accounting.get_contract(self.session, ticker)
 
         if price_ui is not None:
-            price = util.price_to_wire(contract, price_ui)
+            price = conversions.price_to_wire(contract, price_ui)
         else:
             price = None
 
@@ -1099,7 +1101,7 @@ class Administrator:
 
     def manual_deposit(self, address, quantity_ui, admin_username):
         address_db = self.session.query(models.Addresses).filter_by(address=address).one()
-        quantity = util.quantity_to_wire(address_db.contract, quantity_ui)
+        quantity = conversions.quantity_to_wire(address_db.contract, quantity_ui)
         if quantity % address_db.contract.lot_size != 0:
             log.err("Manual deposit for invalid quantity: %d" % quantity)
             raise INVALID_CURRENCY_QUANTITY
@@ -1127,10 +1129,10 @@ class Administrator:
             pickle.dump(self.bs_cache, f)
             log.msg("Saved balance sheet")
 
-    @util.timed
+    @timed
     def update_bs_cache(self):
         now = datetime.utcnow()
-        timestamp = util.dt_to_timestamp(now)
+        timestamp = conversions.dt_to_timestamp(now)
 
         balance_sheet = {'Asset': collections.defaultdict(lambda: {'positions_by_user': {},
                                                                    'total': 0,
@@ -1178,7 +1180,7 @@ class Administrator:
             position_details = {'username': row.username,
                                 'hash': user.user_hash(timestamp),
                                 'position': position,
-                                'position_fmt': util.quantity_fmt(contract, position),
+                                'position_fmt': conversions.quantity_fmt(contract, position),
                                 'timestamp': timestamp}
 
             balance_sheet[user.type][contract.ticker]['positions_by_user'][row.username] = position_details
@@ -1191,7 +1193,7 @@ class Administrator:
                     [r['position'] for r in balance_sheet[side][ticker]['positions_by_user'].values()])
                 details['positions_raw'] = balance_sheet[side][ticker]['positions_by_user'].values()
                 details['contract'] = contract.ticker
-                details['total_fmt'] = util.quantity_fmt(contract, details['total'])
+                details['total_fmt'] = conversions.quantity_fmt(contract, details['total'])
 
         balance_sheet['timestamp'] = timestamp
         self.bs_cache = {}
@@ -1249,7 +1251,7 @@ class Administrator:
         return contracts
 
     def get_contract(self, ticker):
-        contract = util.get_contract(self.session, ticker)
+        contract = accounting.get_contract(self.session, ticker)
         return contract
 
     def edit_contract(self, ticker, args):
@@ -1269,7 +1271,7 @@ class Administrator:
         addresses = self.session.query(models.Addresses).filter(models.Addresses.username != None)
         return addresses
 
-    @util.timed
+    @timed
     def get_orders(self, user, page=0):
         all_orders = self.session.query(models.Order).filter_by(user=user)
         order_count = all_orders.count()
@@ -1279,7 +1281,7 @@ class Administrator:
         orders = all_orders.order_by(models.Order.timestamp.desc()).offset(self.page_size * page).limit(self.page_size)
         return orders, order_pages
 
-    @util.timed
+    @timed
     def get_postings(self, user, contract, page=0):
         import time
 
@@ -1312,7 +1314,7 @@ class Administrator:
         return postings, postings_pages
 
 
-    @util.timed
+    @timed
     def get_trade_volume(self, user, start_datetime, end_datetime):
 
         passive = self.session.execute("SELECT contracts.ticker, SUM(trades.quantity) AS quantity FROM trades "
@@ -1334,12 +1336,12 @@ class Administrator:
                                         'end': end_datetime}).fetchall()
         trade_volume = collections.defaultdict(dict)
         for row in passive:
-            contract = util.get_contract(self.session, row['ticker'])
-            trade_volume[contract]['passive'] = util.quantity_fmt(contract, int(row['quantity']))
+            contract = accounting.get_contract(self.session, row['ticker'])
+            trade_volume[contract]['passive'] = conversions.quantity_fmt(contract, int(row['quantity']))
 
         for row in aggressive:
-            contract = util.get_contract(self.session, row['ticker'])
-            trade_volume[contract]['aggressive'] = util.quantity_fmt(contract, int(row['quantity']))
+            contract = accounting.get_contract(self.session, row['ticker'])
+            trade_volume[contract]['aggressive'] = conversions.quantity_fmt(contract, int(row['quantity']))
 
 
         return trade_volume
@@ -1450,7 +1452,7 @@ class Administrator:
 
         # Save deposit address
         try:
-            contract = util.get_contract(self.session, ticker)
+            contract = accounting.get_contract(self.session, ticker)
             contract.multisig_wallet_address = address
             self.session.commit()
         except Exception as e:
@@ -2135,7 +2137,7 @@ class AdminWebUI(Resource):
         t = self.jinja_env.get_template('admin.html')
         return t.render(username=self.avatarId).encode('utf-8')
 
-    @util.timed
+    @timed
     def user_orders(self, request):
         user = self.administrator.get_user(request.args['username'][0])
         page = int(request.args['page'][0])
@@ -2145,7 +2147,7 @@ class AdminWebUI(Resource):
                             min_range=max(page - 10, 0), max_range=min(order_pages, page + 10))
         return rendered.encode('utf-8')
 
-    @util.timed
+    @timed
     def user_postings(self, request):
         user = self.administrator.get_user(request.args['username'][0])
         page = int(request.args['page'][0])
@@ -2162,7 +2164,7 @@ class AdminWebUI(Resource):
         return rendered.encode('utf-8')
 
 
-    @util.timed
+    @timed
     def user_details(self, request):
         """Show all the details for a particular user
 
@@ -2276,7 +2278,7 @@ class AdminWebUI(Resource):
         balance_sheet = self.administrator.get_balance_sheet()
 
         t = self.jinja_env.get_template('balance_sheet.html')
-        rendered = t.render(balance_sheet=balance_sheet, timestamp=util.timestamp_to_dt(balance_sheet['timestamp']))
+        rendered = t.render(balance_sheet=balance_sheet, timestamp=conversions.timestamp_to_dt(balance_sheet['timestamp']))
         return rendered.encode('utf-8')
 
 

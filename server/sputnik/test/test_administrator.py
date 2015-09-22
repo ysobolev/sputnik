@@ -11,19 +11,27 @@ __author__ = 'sameer'
 import sys
 import os
 import time
-from test_sputnik import TestSputnik, FakeComponent, FakeSendmail, FakeBitgo
+import pkg_resources
+import random
+from sputnik.test.test_sputnik import TestSputnik, FakeComponent, FakeSendmail, FakeBitgo
 from pprint import pprint
 import re
+from tempfile import mkstemp
 from twisted.web.test.test_web import DummyRequest
 from twisted.internet import defer
+from twisted.web.guard import DigestCredentialFactory
+from autobahn.wamp.auth import derive_key, compute_totp
 from datetime import datetime, timedelta
 from sputnik.exception import AdministratorException
 
-sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                             "../server"))
-sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                             "../tools"))
+from sputnik.administrator import administrator
+from sputnik.accountant import accountant
+from sputnik.cashier import cashier
+from sputnik.engine import engine2
+from sputnik.database import models
 
+from sputnik.util.conversions import dt_to_timestamp
+from sputnik.util.accounting import get_contract
 
 class FakeAccountant(FakeComponent):
     name = "accountant"
@@ -41,28 +49,26 @@ class FakeEngine(FakeComponent):
 
     def get_order_book(self):
         self._log_call('get_order_book')
-        from sputnik import util
-
         order_book = {'BUY': {'1': {'errors': "",
                                     'id': 1,
                                     'price': 100,
                                     'quantity': 1,
                                     'quantity_left': 1,
-                                    'timestamp': util.dt_to_timestamp(datetime.utcnow()),
+                                    'timestamp': dt_to_timestamp(datetime.utcnow()),
                                     'username': None},
                               '3': {'errors': "",
                                     'id': 1,
                                     'price': 95,
                                     'quantity': 2,
                                     'quantity_left': 1,
-                                    'timestamp': util.dt_to_timestamp(datetime.utcnow()),
+                                    'timestamp': dt_to_timestamp(datetime.utcnow()),
                                     'username': None}},
                       'SELL': {'2': {'errors': "",
                                      'id': 2,
                                      'price': 105,
                                      'quantity': 1,
                                      'quantity_left': 1,
-                                     'timestamp': util.dt_to_timestamp(datetime.utcnow()),
+                                     'timestamp': dt_to_timestamp(datetime.utcnow()),
                                      'username': None}}}
         return defer.succeed(order_book)
 
@@ -71,30 +77,24 @@ class TestAdministrator(TestSputnik):
     def setUp(self):
         TestSputnik.setUp(self)
 
-        from sputnik import administrator
-        from sputnik import accountant
-        from sputnik import cashier
-        from sputnik import engine2
-
-        accountant = accountant.AdministratorExport(FakeAccountant())
-        cashier = cashier.AdministratorExport(FakeComponent())
+        acct = accountant.AdministratorExport(FakeAccountant())
+        cash = cashier.AdministratorExport(FakeComponent())
         bitgo = FakeBitgo()
         engines = {"BTC/MXN": FakeEngine(),
                    "NETS2014": FakeEngine()}
         zendesk_domain = 'testing'
 
-        from tempfile import mkstemp
         keyfile = mkstemp(prefix='bitgo_key')
         os.remove(keyfile[1])
-        self.administrator = administrator.Administrator(self.session, accountant, cashier,
+        self.administrator = administrator.Administrator(self.session, acct, cash,
                                                          engines,
                                                          zendesk_domain,
-                                                         accountant,
+                                                         acct,
                                                          webserver=FakeComponent("webserver"),
                                                          debug=True,
                                                          sendmail=FakeSendmail('test-email@m2.io'),
                                                          base_uri="https://localhost:8888",
-                                                         template_dir="../server/sputnik/admin_templates",
+                                                         template_dir=pkg_resources.resource_filename("sputnik.templates", None),
                                                          user_limit=50,
                                                          bitgo=bitgo,
                                                          bitgo_private_key_file=keyfile[1],
@@ -129,10 +129,8 @@ contracts set NETS2015 fees 350
 
     def test_get_order_book(self):
         # Create one order that is in the order book and one that is not
-        from sputnik import models, util
-
         user = None
-        contract = util.get_contract(self.session, 'BTC/MXN')
+        contract = get_contract(self.session, 'BTC/MXN')
 
         in_book_order_1 = models.Order(user, contract, 1, 100, 'BUY')
         in_book_order_1.accepted = True
@@ -199,8 +197,6 @@ class TestWebserverExport(TestAdministrator):
         self.add_address(address='new_address_without_user')
         self.assertTrue(self.webserver_export.make_account('new_user', 'new_user_password_hash'))
 
-        from sputnik import models
-
         user = self.session.query(models.User).filter_by(username='new_user').one()
         self.assertEqual(user.username, 'new_user')
         self.assertEqual(user.password, 'new_user_password_hash')
@@ -215,21 +211,15 @@ class TestWebserverExport(TestAdministrator):
         self.add_address(address='new_address_without_user')
         self.assertTrue(self.webserver_export.make_account('new_user', 'new_user_password_hash'))
 
-        from sputnik import models
-
         user = self.session.query(models.User).filter_by(username='new_user').one()
         self.assertEqual(user.username, 'new_user')
         self.assertEqual(user.password, 'new_user_password_hash')
 
         self.add_address(address='second_new_address_without_user')
-        from sputnik import administrator
-
         with self.assertRaisesRegexp(AdministratorException, 'username_taken'):
             self.webserver_export.make_account('new_user', 'new_user_password_hash')
 
     def test_many_accounts(self):
-        from sputnik import administrator
-
         user_limit = self.administrator.user_limit
 
         # Make a ton of users, ignore exceptions
@@ -252,8 +242,6 @@ class TestWebserverExport(TestAdministrator):
                                                       'email': 'email@m2.io',
                                                       'notifications': {'fill': ['email', 'sms'],
                                                                         'transaction': ['email']}})
-        from sputnik import models
-
         user = self.session.query(models.User).filter_by(username='test').one()
         self.assertEqual(user.nickname, 'user_nickname')
         # Email can't be changed
@@ -282,7 +270,6 @@ class TestWebserverExport(TestAdministrator):
                 self.assertFalse(True)
 
     def test_get_profile(self):
-        from sputnik import models
         user = models.User('testuser', 'no_pass')
         n1 = models.Notification(user.username, 'fill', 'email')
         n2 = models.Notification(user.username, 'order', 'sms')
@@ -303,14 +290,11 @@ class TestWebserverExport(TestAdministrator):
     def test_reset_password_hash(self):
         self.create_account('test', password='null')
 
-        from sputnik import models
-        from autobahn.wamp1.protocol import WampCraProtocol
-
         user = self.session.query(models.User).filter_by(username='test').one()
         [salt, old_password_hash] = user.password.split(':')
 
-        extra = {"salt": salt, "keylen": 32, "iterations": 1000}
-        password = WampCraProtocol.deriveKey('test', extra)
+        extra = {"salt": bytes(salt), "keylen": 32, "iterations": 1000}
+        password = derive_key('test', **extra)
         new_password_hash = '%s:%s' % (salt, password)
 
         self.assertTrue(self.webserver_export.reset_password_hash('test', user.password, new_password_hash))
@@ -320,17 +304,12 @@ class TestWebserverExport(TestAdministrator):
     def test_reset_password_hash_bad(self):
         self.create_account('test', password='null')
 
-        from sputnik import models
-        from autobahn.wamp1.protocol import WampCraProtocol
-
         user = self.session.query(models.User).filter_by(username='test').one()
         [salt, old_password_hash] = user.password.split(':')
 
-        extra = {"salt": salt, "keylen": 32, "iterations": 1000}
-        password = WampCraProtocol.deriveKey('test', extra)
+        extra = {"salt": bytes(salt), "keylen": 32, "iterations": 1000}
+        password = derive_key('test', **extra)
         new_password_hash = '%s:%s' % (salt, password)
-
-        from sputnik import administrator
 
         with self.assertRaisesRegexp(AdministratorException, "password_mismatch"):
             self.webserver_export.reset_password_hash('test', "bad_old_hash", new_password_hash)
@@ -338,17 +317,12 @@ class TestWebserverExport(TestAdministrator):
     def test_reset_password_hash_bad_token(self):
         self.create_account('test', password='null')
 
-        from sputnik import models
-        from autobahn.wamp1.protocol import WampCraProtocol
-
         user = self.session.query(models.User).filter_by(username='test').one()
         [salt, old_password_hash] = user.password.split(':')
 
-        extra = {"salt": salt, "keylen": 32, "iterations": 1000}
-        password = WampCraProtocol.deriveKey('test', extra)
+        extra = {"salt": bytes(salt), "keylen": 32, "iterations": 1000}
+        password = derive_key('test', **extra)
         new_password_hash = '%s:%s' % (salt, password)
-
-        from sputnik import administrator
 
         with self.assertRaisesRegexp(AdministratorException, "invalid_token"):
             self.assertTrue(
@@ -365,8 +339,6 @@ class TestWebserverExport(TestAdministrator):
         token_str = match.group(1)
 
         # A token was created
-        from sputnik import models
-
         token = self.session.query(models.ResetToken).filter_by(username='test').one()
         self.assertEqual(token.username, 'test')
         self.assertEqual(token.token, token_str)
@@ -382,19 +354,15 @@ class TestWebserverExport(TestAdministrator):
         token_str = match.group(1)
 
         # A token was created
-        from sputnik import models
-
         token = self.session.query(models.ResetToken).filter_by(username='test').one()
         self.assertEqual(token.username, 'test')
         self.assertEqual(token.token, token_str)
 
-        from autobahn.wamp1.protocol import WampCraProtocol
-
         user = self.session.query(models.User).filter_by(username='test').one()
         [salt, old_password_hash] = user.password.split(':')
 
-        extra = {"salt": salt, "keylen": 32, "iterations": 1000}
-        password = WampCraProtocol.deriveKey('test', extra)
+        extra = {"salt": bytes(salt), "keylen": 32, "iterations": 1000}
+        password = derive_key('test', **extra)
         new_password_hash = '%s:%s' % (salt, password)
 
         self.assertTrue(self.webserver_export.reset_password_hash('test', None, new_password_hash, token=token_str))
@@ -409,16 +377,12 @@ class TestWebserverExport(TestAdministrator):
         self.assertEqual(len(self.administrator.sendmail.log), 0)
 
         # No reset tokens should be created
-        from sputnik import models
-
         self.assertEqual(self.session.query(models.ResetToken).count(), 0)
 
     def test_register_support_ticket(self):
         self.create_account('test')
         nonce = self.webserver_export.request_support_nonce('test', 'Compliance')
         self.webserver_export.register_support_ticket('test', nonce, 'Compliance', 'KEY')
-
-        from sputnik import models
 
         ticket = self.session.query(models.SupportTicket).filter_by(username='test', nonce=nonce).one()
         self.assertEqual(ticket.nonce, nonce)
@@ -428,8 +392,6 @@ class TestWebserverExport(TestAdministrator):
     def test_request_support_nonce(self):
         self.create_account('test')
         nonce = self.webserver_export.request_support_nonce('test', 'Compliance')
-
-        from sputnik import models
 
         ticket = self.session.query(models.SupportTicket).filter_by(username='test', nonce=nonce).one()
         self.assertEqual(ticket.nonce, nonce)
@@ -451,8 +413,6 @@ class TestTOTP(TestAdministrator):
         self.assertFalse(user.totp_enabled)
 
     def test_enable_totp_already_enabled(self):
-        from autobahn.wamp.auth import compute_totp
-
         self.create_account("test")
         user = self.get_user("test")
         secret = self.webserver_export.enable_totp("test")
@@ -464,8 +424,6 @@ class TestTOTP(TestAdministrator):
         self.assertTrue(user.totp_enabled)
 
     def test_verify_totp_success(self):
-        from autobahn.wamp.auth import compute_totp
-
         self.create_account("test")
         user = self.get_user("test")
         secret = self.webserver_export.enable_totp("test")
@@ -474,8 +432,6 @@ class TestTOTP(TestAdministrator):
         self.assertTrue(user.totp_enabled)
 
     def test_verify_totp_fail(self):
-        from autobahn.wamp.auth import compute_totp
-
         self.create_account("test")
         user = self.get_user("test")
         secret = self.webserver_export.enable_totp("test")
@@ -484,15 +440,11 @@ class TestTOTP(TestAdministrator):
         self.assertFalse(user.totp_enabled)
 
     def test_verify_totp_not_enabled(self):
-        from autobahn.wamp.auth import compute_totp
-
         self.create_account("test")
         with self.assertRaisesRegexp(AdministratorException, "totp_not_enabled"):
             self.webserver_export.verify_totp("test", compute_totp(""))
 
     def test_verify_totp_already_enabled(self):
-        from autobahn.wamp.auth import compute_totp
-
         self.create_account("test")
         secret = self.webserver_export.enable_totp("test")
         result = self.webserver_export.verify_totp("test", compute_totp(secret))
@@ -501,8 +453,6 @@ class TestTOTP(TestAdministrator):
             self.webserver_export.verify_totp("test", compute_totp(secret))
 
     def test_disable_totp_success(self):
-        from autobahn.wamp.auth import compute_totp
-
         self.create_account("test")
         user = self.get_user("test")
         secret = self.webserver_export.enable_totp("test")
@@ -515,8 +465,6 @@ class TestTOTP(TestAdministrator):
         self.assertFalse(user.totp_enabled)
 
     def test_disable_totp_fail(self):
-        from autobahn.wamp.auth import compute_totp
-
         self.create_account("test")
         user = self.get_user("test")
         secret = self.webserver_export.enable_totp("test")
@@ -528,16 +476,12 @@ class TestTOTP(TestAdministrator):
         self.assertTrue(user.totp_enabled)
 
     def test_disable_totp_not_enabled(self):
-        from autobahn.wamp.auth import compute_totp
-
         self.create_account("test")
         user = self.get_user("test")
         with self.assertRaisesRegexp(AdministratorException, "totp_not_enabled"):
             self.webserver_export.disable_totp("test", "")
 
     def test_check_totp_success(self):
-        from autobahn.wamp.auth import compute_totp
-
         self.create_account("test")
         user = self.get_user("test")
         secret = self.webserver_export.enable_totp("test")
@@ -552,8 +496,6 @@ class TestTOTP(TestAdministrator):
         self.assertEqual(user.totp_last, now + 1)
 
     def test_check_totp_fail(self):
-        from autobahn.wamp.auth import compute_totp
-
         self.create_account("test")
         user = self.get_user("test")
         secret = self.webserver_export.enable_totp("test")
@@ -567,8 +509,6 @@ class TestTOTP(TestAdministrator):
         self.assertEqual(user.totp_last, now)
 
     def test_check_totp_replay(self):
-        from autobahn.wamp.auth import compute_totp
-
         self.create_account("test")
         user = self.get_user("test")
         secret = self.webserver_export.enable_totp("test")
@@ -598,8 +538,6 @@ class TestTicketServerExport(TestAdministrator):
 
     def test_check_support_nonce_bad(self):
         self.create_account('test')
-        from sputnik import administrator
-
         with self.assertRaisesRegexp(AdministratorException, 'invalid_support_nonce'):
             self.ticketserver_export.check_support_nonce('test', 'bad_nonce', 'Compliance')
 
@@ -607,8 +545,6 @@ class TestTicketServerExport(TestAdministrator):
         self.create_account('test')
         nonce = self.webserver_export.request_support_nonce('test', 'Compliance')
         self.ticketserver_export.register_support_ticket('test', nonce, 'Compliance', 'KEY')
-
-        from sputnik import models
 
         ticket = self.session.query(models.SupportTicket).filter_by(username='test', nonce=nonce).one()
         self.assertEqual(ticket.nonce, nonce)
@@ -638,9 +574,6 @@ class StupidRequest(DummyRequest):
 class TestAdministratorWebUI(TestAdministrator):
     def setUp(self):
         TestAdministrator.setUp(self)
-
-        from sputnik import administrator
-        from twisted.web.guard import DigestCredentialFactory
 
         digest_factory = DigestCredentialFactory('md5', 'Sputnik Admin Interface')
         self.web_ui_factory = lambda level: administrator.AdminWebUI(administrator.AdminWebExport(self.administrator), 'admin', level, digest_factory, '')
@@ -806,7 +739,6 @@ class TestAdministratorWebUI(TestAdministrator):
 
         def rendered(ignored):
             self.assertRegexpMatches(request.redirect_url, 'fee_groups')
-            from sputnik import models
 
             group = self.session.query(models.FeeGroup).filter_by(id=2).one()
             self.assertEqual(group.aggressive_factor, 100)
@@ -832,7 +764,6 @@ class TestAdministratorWebUI(TestAdministrator):
 
         def rendered(ignored):
             self.assertRegexpMatches(request.redirect_url, 'fee_groups')
-            from sputnik import models
 
             group = self.session.query(models.FeeGroup).filter_by(name='NewName').one()
             self.assertEqual(group.aggressive_factor, 100)
@@ -845,8 +776,6 @@ class TestAdministratorWebUI(TestAdministrator):
         return d
 
     def test_edit_contract_cash(self):
-        from sputnik import models
-
         BTC_dict = self.session.query(models.Contract).filter_by(ticker='BTC').one().__dict__
 
         request = StupidRequest([''], path='/edit_contract',
@@ -1005,7 +934,6 @@ class TestAdministratorWebUI(TestAdministrator):
 
         def rendered(ignored):
             self.assertRegexpMatches(request.redirect_url, 'admin_list')
-            from sputnik import models
             new_user = self.session.query(models.AdminUser).filter_by(username='new_user').one()
             self.assertEqual(new_user.level, 4)
             self.assertEqual(new_user.password_hash, admin_ui.calc_ha1('test_pw', 'new_user'))
@@ -1022,7 +950,6 @@ class TestAdministratorWebUI(TestAdministrator):
 
         def rendered(ignored):
             self.assertRegexpMatches(request.redirect_url, 'admin_list')
-            from sputnik import models
             new_user = self.session.query(models.AdminUser).filter_by(username='admin').one()
             self.assertEqual(new_user.level, 2)
 
@@ -1038,7 +965,6 @@ class TestAdministratorWebUI(TestAdministrator):
 
         def rendered(ignored):
             self.assertRegexpMatches(request.redirect_url, 'admin_list')
-            from sputnik import models
             new_user = self.session.query(models.AdminUser).filter_by(username='admin').one()
             self.assertEqual(new_user.password_hash, admin_ui.calc_ha1('test_pw', 'admin'))
 
@@ -1092,8 +1018,6 @@ class TestAdministratorWebUI(TestAdministrator):
 
         def rendered(ignored):
             self.assertRegexpMatches(request.redirect_url, 'admin')
-            from sputnik import models
-
             admin_user = self.session.query(models.AdminUser).filter_by(username='admin').one()
             self.assertEqual(admin_user.password_hash, admin_ui.calc_ha1('admin', username='admin'))
 
@@ -1119,8 +1043,6 @@ class TestAdministratorWebUI(TestAdministrator):
 
             def rendered(ignored):
                 self.assertRegexpMatches(request.redirect_url, 'admin')
-                from sputnik import models
-
                 admin_user = self.session.query(models.AdminUser).filter_by(username='admin').one()
                 self.assertEqual(admin_user.password_hash, admin_ui.calc_ha1('test', username='admin'))
 
@@ -1235,15 +1157,11 @@ class TestAdministratorWebUI(TestAdministrator):
 
         def rendered(ignored):
             self.assertRegexpMatches(request.redirect_url, 'user_details')
-            from sputnik import models
-
             user = self.session.query(models.User).filter_by(username='test').one()
             [salt, hash] = user.password.split(':')
 
-            extra = {"salt": salt, "keylen": 32, "iterations": 1000}
-            from autobahn.wamp1.protocol import WampCraProtocol
-
-            password = WampCraProtocol.deriveKey('new_pass', extra)
+            extra = {"salt": bytes(salt), "keylen": 32, "iterations": 1000}
+            password = derive_key('new_pass', **extra)
             self.assertEqual(hash, password)
 
         d.addCallback(rendered)
@@ -1264,10 +1182,7 @@ class TestAdministratorWebUI(TestAdministrator):
 
     def test_change_permission_group(self):
         self.create_account('test')
-        from sputnik import models
-
         groups = self.session.query(models.PermissionGroup).all()
-        import random
 
         new_group = random.choice(groups)
         new_id = new_group.id
@@ -1299,8 +1214,6 @@ class TestAdministratorWebUI(TestAdministrator):
 
         def rendered(ignored):
             self.assertRegexpMatches(request.redirect_url, 'permission_groups')
-
-            from sputnik import models
 
             group = self.session.query(models.PermissionGroup).filter_by(name='New Test Group').one()
 

@@ -13,7 +13,7 @@ import json
 from twisted.internet import defer
 from twisted.python import log
 import string
-from exception import *
+from sputnik.exception import *
 ZENDESK_ERROR = ZendeskException("exceptions/zendesk/zendesk_error")
 
 class Zendesk(object):
