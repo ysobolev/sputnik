@@ -12,14 +12,10 @@ from test_sputnik import fix_config, TestSputnik, FakeComponent
 from twisted.internet import defer, reactor, task
 from pprint import pprint
 
-sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                             "../server"))
-sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                             "../tools"))
-
 fix_config()
 
-from sputnik import models, margin
+from sputnik.database import models
+from sputnik.accountant import margin
 
 class TestMargin(TestSputnik):
     def setUp(self):
@@ -40,7 +36,6 @@ class TestMargin(TestSputnik):
         self.create_position('MXN', 10000)
 
         # No orders
-        from sputnik import margin
         test = self.get_user('test')
         low_margin, high_margin, max_cash_spent = margin.calculate_margin(test, self.session)
         self.assertEqual(low_margin, 0)
@@ -110,7 +105,6 @@ class TestMargin(TestSputnik):
 
     def test_predictions_only(self):
         # Check margin given some positions
-        from sputnik import margin
         test = self.get_user('test')
 
         # Long position, no margin needed
@@ -153,7 +147,6 @@ class TestMargin(TestSputnik):
         self.cancel_order(id)
 
     def test_futures_only(self):
-        from sputnik import margin
         # Place an order with no position, safe_price is same as order price
         id = self.create_order('USDBTC0W', 1, 1000, 'BUY')
         test = self.get_user('test')
@@ -221,7 +214,6 @@ class TestMargin(TestSputnik):
         self.assertEqual(high_margin, 1500 * 1 * 100000 / 1000 * 0.50 + 500 * 1 * 100000 / 1000)
 
     def test_margin_futures_overrides(self):
-        from sputnik import margin
         test = self.get_user('test')
         # Check short position
         self.create_position('USDBTC0W', -2, reference_price=1000)
@@ -243,7 +235,6 @@ class TestMargin(TestSputnik):
         # 1 Peso
         self.create_position('MXN', 10000)
 
-        from sputnik import margin
         test = self.get_user('test')
 
         # With a BUY order
