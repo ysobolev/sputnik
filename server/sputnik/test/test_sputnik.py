@@ -15,6 +15,7 @@ import StringIO
 import logging
 from twisted.internet import defer
 from twisted.web.server import NOT_DONE_YET
+from sqlalchemy.orm.exc import NoResultFound
 from datetime import datetime, timedelta
 import copy
 
@@ -24,11 +25,6 @@ from sputnik.database import database, models
 from sputnik.tools import leo
 
 logging.basicConfig(level=1000)
-
-sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                             "../server"))
-sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                             "../tools"))
 
 db_init = """
 database init
@@ -330,7 +326,6 @@ class TestSputnik(unittest.TestCase):
 
     def create_position(self, ticker, quantity, reference_price=None):
         contract = self.session.query(models.Contract).filter_by(ticker=ticker).one()
-        from sqlalchemy.orm.exc import NoResultFound
         try:
             position = self.session.query(models.Position).filter_by(user=self.user, contract=contract).one()
             position.position = quantity
