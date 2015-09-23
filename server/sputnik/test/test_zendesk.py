@@ -11,14 +11,9 @@ __author__ = 'sameer'
 import sys
 import os
 
-sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                             "../server"))
-sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                             "../tools"))
-
 from twisted.trial import unittest
 from twisted.internet import reactor, task
-from sputnik import zendesk
+from sputnik.administrator import zendesk
 from pprint import pprint
 
 class TestZendesk(unittest.TestCase):
