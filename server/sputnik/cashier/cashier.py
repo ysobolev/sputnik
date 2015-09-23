@@ -10,6 +10,7 @@
 import json
 import sys
 import os
+import pkg_resources
 from optparse import OptionParser
 from datetime import datetime
 import base64
@@ -38,6 +39,7 @@ from sputnik.database import models
 from sputnik.database import database as db
 from sputnik.rpc.rpc_schema import schema
 from sputnik.util.util import session_aware
+from sputnik.util import accounting, conversions, ssl
 from sputnik.exception import *
 from sputnik.util.bitgo import BitGo
 from pycoin.key.validate import is_address_valid
@@ -68,7 +70,7 @@ class Cashier():
     """
 
     def __init__(self, session, accountant, bitcoinrpc, compropago, cold_wallet_period=None,
-                 sendmail=None, template_dir="admin_templates", minimum_confirmations=6, alerts=None,
+                 sendmail=None, template_dir=pkg_resources.resource_filename("sputnik.templates", None), minimum_confirmations=6, alerts=None,
                  bitgo=None, bitgo_private_key_file=None, testnet=True):
         """
         Initializes the cashier class by connecting to bitcoind and to the accountant
@@ -313,7 +315,7 @@ class Cashier():
 
     @inlineCallbacks
     def transfer_from_multisig_wallet(self, ticker, quantity, destination, multisig):
-        contract = util.get_contract(self.session, ticker)
+        contract = accounting.get_contract(self.session, ticker)
         if destination == "onlinecash":
             address = yield self.get_current_address("multisigcash", ticker)
         elif destination == "offlinecash":
@@ -361,9 +363,9 @@ class Cashier():
         if is_address_valid(address) != network:
             raise INVALID_ADDRESS
 
-        contract = util.get_contract(self.session, ticker)
+        contract = accounting.get_contract(self.session, ticker)
         if not multisig:
-            withdrawal_amount = float(util.quantity_from_wire(contract, amount))
+            withdrawal_amount = float(conversions.quantity_from_wire(contract, amount))
             try:
                 result = yield self.bitcoinrpc[ticker].getbalance()
             except Exception as e:
@@ -847,7 +849,7 @@ if __name__ == '__main__':
         key = config.get("webserver", "ssl_key")
         cert = config.get("webserver", "ssl_cert")
         cert_chain = config.get("webserver", "ssl_cert_chain")
-        contextFactory = util.ChainedOpenSSLContextFactory(key, cert_chain)
+        contextFactory = ssl.ChainedOpenSSLContextFactory(key, cert_chain)
 
         reactor.listenSSL(config.getint("cashier", "public_port"),
                       Site(public_server), contextFactory,

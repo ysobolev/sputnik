@@ -8,17 +8,18 @@
 
 import sys
 import os
+import pkg_resources
 from twisted.internet import defer
-from test_sputnik import TestSputnik, FakeComponent, FakeSendmail, FakeBitgo
+from sputnik.test.test_sputnik import TestSputnik, FakeComponent, FakeSendmail, FakeBitgo
 from pprint import pprint
+from tempfile import mkstemp
+import json
 from twisted.web.test.test_web import DummyRequest
 from sputnik.exception import CashierException
 
-sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                             "../server"))
-sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                             "../tools"))
-
+from sputnik.accountant import accountant
+from sputnik.cashier import cashier
+from sputnik.database import models
 
 class FakeBitcoin(FakeComponent):
     received = {}
@@ -85,16 +86,11 @@ class TestCashier(TestSputnik):
     def setUp(self):
         TestSputnik.setUp(self)
 
-        from sputnik import cashier
-        from sputnik import accountant
-
         self.accountant = accountant.CashierExport(FakeComponent("accountant"))
         self.bitcoinrpc = {'BTC': FakeBitcoin()}
         self.compropago = FakeComponent()
         self.bitgo = FakeBitgo()
         self.sendmail = FakeSendmail('test-email@m2.io')
-        from tempfile import mkstemp
-        import json
         keyfile = mkstemp(prefix="bitgo_key")[1]
         with open(keyfile, "w") as f:
             json.dump({'passphrase': 'NULL'}, f)
@@ -104,7 +100,7 @@ class TestCashier(TestSputnik):
                                        self.compropago,
                                        cold_wallet_period=None,
                                        sendmail=self.sendmail,
-                                       template_dir="../server/sputnik/admin_templates",
+                                       template_dir=pkg_resources.resource_filename("sputnik.templates", None),
                                        minimum_confirmations=6,
                                        bitgo=self.bitgo,
                                        bitgo_private_key_file=keyfile,
@@ -127,13 +123,11 @@ class TestWebserverExport(TestCashier):
         def onSuccess(new_address):
             self.assertEqual(new_address, 'muXGTbVYgDcLcpetQg777SmbSbRsk4kpqk')
 
-            from sputnik import models
-
             address = self.session.query(models.Addresses).filter_by(username='test', active=True).one()
             self.assertEqual(address.address, 'muXGTbVYgDcLcpetQg777SmbSbRsk4kpqk')
 
         def onFail(failure):
-            self.assertFalse(True)
+            return failure
 
         d.addCallbacks(onSuccess, onFail)
         return d
@@ -146,13 +140,11 @@ class TestWebserverExport(TestCashier):
         def onSuccess(new_address):
             self.assertEqual(new_address, 'msj42CCGruhRsFrGATiUuh25dtxYtnpbTx')
 
-            from sputnik import models
-
             address = self.session.query(models.Addresses).filter_by(username='test', active=True).one()
             self.assertEqual(address.address, 'msj42CCGruhRsFrGATiUuh25dtxYtnpbTx')
 
         def onFail(failure):
-            self.assertFalse(True)
+            return failure
 
         d.addCallbacks(onSuccess, onFail)
         return d
@@ -162,13 +154,11 @@ class TestWebserverExport(TestCashier):
         d = self.webserver_export.get_new_address('test', 'MXN')
 
         def onSuccess(new_address):
-            from sputnik import models
-
             address = self.session.query(models.Addresses).filter_by(username='test', active=True).one()
             self.assertEqual(address.address, new_address)
 
         def onFail(failure):
-            self.assertFalse(True)
+            return failure
 
         d.addCallbacks(onSuccess, onFail)
         return d
@@ -181,7 +171,7 @@ class TestWebserverExport(TestCashier):
             self.assertEqual(current_address, 'STARTING_ADDRESS')
 
         def onFail(failure):
-            self.assertTrue(False)
+            return failure
 
         d.addCallbacks(onSuccess, onFail)
         return d
@@ -193,13 +183,11 @@ class TestWebserverExport(TestCashier):
         def onSuccess(current_address):
             self.assertEqual(current_address, 'msj42CCGruhRsFrGATiUuh25dtxYtnpbTx')
 
-            from sputnik import models
-
             address = self.session.query(models.Addresses).filter_by(username='test', active=True).one()
             self.assertEqual(address.address, 'msj42CCGruhRsFrGATiUuh25dtxYtnpbTx')
 
         def onFail(failure):
-            self.assertTrue(False)
+            return failure
 
         d.addCallbacks(onSuccess, onFail)
         return d
@@ -209,13 +197,11 @@ class TestWebserverExport(TestCashier):
         d = self.webserver_export.get_current_address('test', 'MXN')
 
         def onSuccess(current_address):
-            from sputnik import models
-
             address = self.session.query(models.Addresses).filter_by(username='test', active=True).one()
             self.assertEqual(address.address, current_address)
 
         def onFail(failure):
-            self.assertTrue(False)
+            return failure
 
         d.addCallbacks(onSuccess, onFail)
         return d
@@ -268,7 +254,7 @@ class TestAdministratorExport(TestCashier):
 
 
         def onFail(failure):
-            self.assertTrue(False)
+            return failure
 
         d.addCallbacks(onSuccess, onFail)
 
@@ -298,7 +284,7 @@ class TestAdministratorExport(TestCashier):
 
 
         def onFail(failure):
-            self.assertTrue(False)
+            return failure
 
         d.addCallbacks(onSuccess, onFail)
 
@@ -357,7 +343,7 @@ class TestAdministratorExport(TestCashier):
 
 
         def onFail(failure):
-            self.assertTrue(False)
+            return failure
 
         d.addCallbacks(onSuccess, onFail)
 
@@ -399,7 +385,7 @@ class TestAdministratorExport(TestCashier):
 
 
         def onFail(failure):
-            self.assertTrue(False)
+            return failure
 
         d.addCallbacks(onSuccess, onFail)
     def test_rescan_address_with_deposit(self):
@@ -414,7 +400,7 @@ class TestAdministratorExport(TestCashier):
             self.assertTrue(self.accountant.component.check_for_calls([('deposit_cash', ("test", 'mm2wh34gqqchF2jNqJ7MGXFRrMtMX6pDaA', 123000000L), {})]))
 
         def onFail(failure):
-            self.assertFalse(True)
+            return failure
 
         d.addCallbacks(onSuccess, onFail)
         return d
@@ -431,7 +417,7 @@ class TestAdministratorExport(TestCashier):
             self.assertEquals(self.accountant.component.log, [])
 
         def onFail(failure):
-            self.assertFalse(True)
+            return failure
 
         d.addCallbacks(onSuccess, onFail)
         return d
@@ -446,7 +432,7 @@ class TestAdministratorExport(TestCashier):
             self.assertEquals(self.accountant.component.log, [])
 
         def onFail(failure):
-            self.assertFalse(True)
+            return failure
 
         d.addCallbacks(onSuccess, onFail)
         return d
@@ -469,7 +455,7 @@ class TestAdministratorExport(TestCashier):
             return d
 
         def onFail(failure):
-            self.assertFalse(True)
+            return failure
 
         d.addCallbacks(onSuccess, onFail)
         return d
@@ -480,8 +466,6 @@ class TestAdministratorExport(TestCashier):
 
         def onSuccess(withdrawal_id):
             self.cashier.bitcoinrpc['BTC'].set_balance(0.01)
-
-            from sputnik import models
 
             d = self.administrator_export.process_withdrawal(withdrawal_id, online=True, admin_username='test_admin')
 
@@ -520,13 +504,13 @@ class TestAdministratorExport(TestCashier):
                 self.assertFalse(withdrawal.pending)
 
             def onFail(failure):
-                self.assertTrue(False)
+                return failure
 
             d.addCallbacks(onSuccess, onFail)
             return d
 
         def onFail(failure):
-            self.assertFalse(True)
+            return failure
 
         d.addCallbacks(onSuccess, onFail)
         return d
@@ -545,8 +529,6 @@ class TestAdministratorExport(TestCashier):
 
             def onFail(failure):
                 self.assertEqual(failure.value.args, ("exceptions/cashier/insufficient_funds",))
-                from sputnik import models
-
                 withdrawal = self.session.query(models.Withdrawal).filter_by(id=withdrawal_id).one()
 
                 self.assertEqual(self.accountant.component.log, [])
@@ -557,7 +539,7 @@ class TestAdministratorExport(TestCashier):
             return d
 
         def onFail(failure):
-            self.assertFalse(True)
+            return failure
 
         d.addCallbacks(onSuccess, onFail)
 
@@ -567,14 +549,10 @@ class TestAdministratorExport(TestCashier):
         d = self.cashier.request_withdrawal('test', 'MXN', 'mzJP8hzfZLs8B5Vx3DLfCQ8sJH3ViuJQ5M', 100000000)
 
         def onSuccess(withdrawal_id):
-            from sputnik import cashier
-
             d = self.administrator_export.process_withdrawal(withdrawal_id, online=True, admin_username='test_admin')
 
             def onFail(failure):
                 self.assertEqual(failure.value.args[0], "exceptions/cashier/no_automatic_withdrawal")
-                from sputnik import models
-
                 withdrawal = self.session.query(models.Withdrawal).filter_by(id=withdrawal_id).one()
 
                 self.assertEqual(self.accountant.component.log, [])
@@ -588,7 +566,7 @@ class TestAdministratorExport(TestCashier):
             return d
 
         def onFail(failure):
-            self.assertFalse(True)
+            return failure
 
         d.addCallbacks(onSuccess, onFail)
         return d
@@ -601,8 +579,6 @@ class TestAdministratorExport(TestCashier):
             d = self.administrator_export.process_withdrawal(withdrawal_id, online=False, admin_username='test_admin')
 
             def onSuccess(txid):
-                from sputnik import models
-
                 withdrawal = self.session.query(models.Withdrawal).filter_by(id=withdrawal_id).one()
                 self.assertTrue(self.accountant.component.check_for_calls([('transfer_position',
                                                                   ('pendingwithdrawal',
@@ -623,13 +599,13 @@ class TestAdministratorExport(TestCashier):
                 self.assertFalse(withdrawal.pending)
 
             def onFail(failure):
-                self.assertFalse(True)
+                return failure
 
             d.addCallbacks(onSuccess, onFail)
             return d
 
         def onFail(failure):
-            self.assertFalse(True)
+            return failure
 
         d.addCallbacks(onSuccess, onFail)
         return d
@@ -643,8 +619,6 @@ class TestAdministratorExport(TestCashier):
             d = self.administrator_export.process_withdrawal(withdrawal_id, cancel=True, admin_username='test_admin')
 
             def onSuccess(txid):
-                from sputnik import models
-
                 withdrawal = self.session.query(models.Withdrawal).filter_by(id=withdrawal_id).one()
                 self.assertTrue(self.accountant.component.check_for_calls([('transfer_position',
                                                                   ('pendingwithdrawal',
@@ -666,13 +640,13 @@ class TestAdministratorExport(TestCashier):
                 self.assertFalse(withdrawal.pending)
 
             def onFail(failure):
-                self.assertFalse(True)
+                return failure
 
             d.addCallbacks(onSuccess, onFail)
             return d
 
         def onFail(failure):
-            self.assertFalse(True)
+            return failure
 
         d.addCallbacks(onSuccess, onFail)
         return d
@@ -685,8 +659,6 @@ class TestAccountantExport(TestCashier):
         d = self.accountant_export.request_withdrawal('test', 'BTC', 'mzJP8hzfZLs8B5Vx3DLfCQ8sJH3ViuJQ5M', 1000000)
 
         def onSuccess(withdrawal_id):
-            from sputnik import models
-
             withdrawal = self.session.query(models.Withdrawal).filter_by(id=withdrawal_id).one()
             self.assertFalse(withdrawal.pending)
             self.assertTrue(self.accountant.component.check_for_calls([('transfer_position',
@@ -705,7 +677,7 @@ class TestAccountantExport(TestCashier):
                                                               {})]))
 
         def onFail(failure):
-            self.assertFalse(True)
+            return failure
 
         d.addCallbacks(onSuccess, onFail)
         return d
@@ -716,8 +688,6 @@ class TestAccountantExport(TestCashier):
         d = self.accountant_export.request_withdrawal('test', 'BTC', 'mzJP8hzfZLs8B5Vx3DLfCQ8sJH3ViuJQ5M', 50000000)
 
         def onSuccess(withdrawal_id):
-            from sputnik import models
-
             withdrawal = self.session.query(models.Withdrawal).filter_by(id=withdrawal_id).one()
             self.assertTrue(withdrawal.pending)
 
@@ -730,7 +700,7 @@ class TestAccountantExport(TestCashier):
                                                                      'to_address': u'<> anonymous'})]))
 
         def onFail(failure):
-            self.assertTrue(False)
+            return failure
 
         d.addCallbacks(onSuccess, onFail)
         return d
@@ -741,8 +711,6 @@ class TestAccountantExport(TestCashier):
         d = self.accountant_export.request_withdrawal('test', 'BTC', 'mzJP8hzfZLs8B5Vx3DLfCQ8sJH3ViuJQ5M', 120000000)
 
         def onSuccess(withdrawal_id):
-            from sputnik import models
-
             withdrawal = self.session.query(models.Withdrawal).filter_by(id=withdrawal_id).one()
             self.assertTrue(withdrawal.pending)
 
@@ -755,7 +723,7 @@ class TestAccountantExport(TestCashier):
                                                                      'to_address': u'<> anonymous'})]))
 
         def onFail(failure):
-            self.assertFalse(True)
+            return failure
 
         d.addCallbacks(onSuccess, onFail)
         return d
@@ -765,8 +733,6 @@ class TestAccountantExport(TestCashier):
         d = self.accountant_export.request_withdrawal('test', 'MXN', 'mzJP8hzfZLs8B5Vx3DLfCQ8sJH3ViuJQ5M', 1200000)
 
         def onSuccess(withdrawal_id):
-            from sputnik import models
-
             withdrawal = self.session.query(models.Withdrawal).filter_by(id=withdrawal_id).one()
             self.assertTrue(withdrawal.pending)
 
@@ -779,7 +745,7 @@ class TestAccountantExport(TestCashier):
                                                                      'to_address': u'<> anonymous'})]))
 
         def onFail(failure):
-            self.assertFalse(True)
+            return failure
 
         d.addCallbacks(onSuccess, onFail)
         return d
