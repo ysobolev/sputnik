@@ -28,7 +28,7 @@ from twisted.internet import reactor
 from twisted.python import log
 import json
 
-if __name__ == "__main__":
+def main():
     import sys
     log.startLogging(sys.stdout)
     subscriber = bind_subscriber(config.get("safe_price_forwarder", "zmq_frontend_address"))

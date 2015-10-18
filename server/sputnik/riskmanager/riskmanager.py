@@ -138,7 +138,7 @@ class RiskManager():
                                                      self.cash_positions[user.username]))
 
 
-if __name__ == "__main__":
+def main():
     log.startLogging(sys.stdout)
 
     session = database.make_session()

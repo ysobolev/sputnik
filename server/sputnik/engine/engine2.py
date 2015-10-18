@@ -548,7 +548,7 @@ class AdministratorExport(ComponentExport):
         return order_book
 
 
-if __name__ == "__main__":
+def main():
     log.startLogging(sys.stdout)
     session = database.make_session()
     ticker = args[0]

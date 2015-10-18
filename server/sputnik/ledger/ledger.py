@@ -276,7 +276,7 @@ def create_posting(type, username, contract, quantity, direction, note=None, tim
     return {"username":username, "contract":contract, "quantity":quantity,
             "direction":direction, "note": note, "type": type, "timestamp": timestamp}
 
-if __name__ == "__main__":
+def main():
     fo = log.startLogging(sys.stdout)
     fo.formatTime = lambda x: datetime.datetime.fromtimestamp(x).strftime("%Y-%m-%d %H:%M:%S.%f")
     engine = database.make_engine()

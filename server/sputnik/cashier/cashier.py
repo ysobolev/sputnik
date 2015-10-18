@@ -793,7 +793,7 @@ class AccountantExport(ComponentExport):
     def request_withdrawal(self, username, ticker, address, amount):
         return self.cashier.request_withdrawal(username, ticker, address, amount)
 
-if __name__ == '__main__':
+def main():
     log.startLogging(sys.stdout)
 
     accountant = AccountantProxy("dealer",

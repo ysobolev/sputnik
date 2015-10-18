@@ -237,7 +237,7 @@ def main(pm):
 
     server.listen(site)
 
-if __name__ == "__main__":
+def main():
     from autobahn.twisted.choosereactor import install_reactor
     reactor = install_reactor()
 
