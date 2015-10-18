@@ -1,5 +1,5 @@
 [program:accountant]
-command = ${root}/server/sputnik/%(program_name)s.py${pycompiled} -c ${conf}/sputnik.ini %(process_num)d
+command = /usr/bin/python -m sputnik.accountant -c ${conf}/sputnik.ini %(process_num)d
 process_name = %(program_name)s_%(process_num)d
 numprocs = ${accountant_count}
 autorestart = true
@@ -11,7 +11,7 @@ directory = ${root}/server/sputnik/
 user=${user}
 
 [program:ledger]
-command = ${root}/server/sputnik/%(program_name)s.py${pycompiled} -c ${conf}/sputnik.ini
+command = /usr/bin/python -m sputnik.ledger -c ${conf}/sputnik.ini
 autorestart = true
 exitcodes = 0
 redirect_stderr = true
@@ -21,7 +21,7 @@ directory = ${root}/server/sputnik/
 user=${user}
 
 [program:administrator]
-command = ${root}/server/sputnik/%(program_name)s.py${pycompiled} -c ${conf}/sputnik.ini
+command = /usr/bin/python -m sputnik.administrator -c ${conf}/sputnik.ini
 autorestart = true
 exitcodes = 0
 redirect_stderr = true
@@ -31,7 +31,7 @@ directory = ${root}/server/sputnik/
 user=${user}
 
 [program:router]
-command = ${root}/server/sputnik/webserver/launch.py${pycompiled} -c ${conf}/sputnik.ini
+command = /usr/bin/python -m sputnik.webserver -c ${conf}/sputnik.ini
 autorestart = true
 exitcodes = 0
 redirect_stderr = true
@@ -41,7 +41,7 @@ directory = ${root}/server/sputnik/webserver
 user=${user}
 
 [program:safe_price_forwarder]
-command = ${root}/server/sputnik/%(program_name)s.py${pycompiled} -c ${conf}/sputnik.ini
+command = /usr/bin/python -m sputnik.forwarder -c ${conf}/sputnik.ini
 autorestart = true
 exitcodes = 0
 redirect_stderr = true
@@ -51,7 +51,7 @@ directory = ${root}/server/sputnik/
 user=${user}
 
 [program:riskmanager]
-command = ${root}/server/sputnik/%(program_name)s.py${pycompiled} -c ${conf}/sputnik.ini
+command = /usr/bin/python -m sputnik.riskmanager -c ${conf}/sputnik.ini
 autorestart = true
 exitcodes = 0
 redirect_stderr = true
@@ -61,7 +61,7 @@ directory = ${root}/server/sputnik/
 user=${user}
 
 [program:cashier]
-command = ${root}/server/sputnik/%(program_name)s.py${pycompiled} -c ${conf}/sputnik.ini
+command = /usr/bin/python -m sputnik.cashier -c ${conf}/sputnik.ini
 autorestart = true
 exitcodes = 0
 redirect_stderr = true
@@ -71,7 +71,7 @@ directory = ${root}/server/sputnik/
 user=${user}
 
 [program:watchdog]
-command = ${root}/server/sputnik/%(program_name)s.py${pycompiled} -c ${conf}/sputnik.ini
+command = /usr/bin/python -m sputnik.watchdog -c ${conf}/sputnik.ini
 autorestart = true
 exitcodes = 0
 redirect_stderr = true
@@ -81,7 +81,7 @@ directory = ${root}/server/sputnik/
 user=${user}
 
 [program:alerts]
-command = ${root}/server/sputnik/%(program_name)s.py${pycompiled} -c ${conf}/sputnik.ini
+command = /usr/bin/python -m sputnik.alerts -c ${conf}/sputnik.ini
 autorestart = true
 exitcodes = 0
 redirect_stderr = true
