@@ -161,7 +161,7 @@ class Root(Resource):
         request.setResponseCode(403, "No Access")
         return "Forbidden".encode('utf-8')
 
-def main(pm):
+def run(pm, reactor):
     from sputnik.webserver.router.twisted.wamp import RouterFactory
     router_factory = RouterFactory()
     router_factory.router = SputnikRouter
@@ -266,5 +266,5 @@ def main():
                "sputnik.webserver.plugins.receiver.engine.EngineReceiver",
                "sputnik.webserver.plugins.receiver.administrator.AdministratorReceiver",
                "sputnik.webserver.rest.RESTProxy"]
-    plugin.run_with_plugins(reactor, plugins, main)
+    plugin.run_with_plugins(reactor, plugins, run, reactor)
 

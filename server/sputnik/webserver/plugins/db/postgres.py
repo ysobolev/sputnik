@@ -15,7 +15,7 @@ from sputnik.webserver.plugin import DatabasePlugin
 from autobahn.wamp import types
 from twisted.internet.defer import inlineCallbacks, returnValue
 from twisted.enterprise import adbapi
-from sputnik import util
+from sputnik.util import conversions as util
 import markdown
 import datetime
 import collections

@@ -19,7 +19,7 @@ from twisted.internet.defer import inlineCallbacks, returnValue, succeed
 from autobahn import wamp
 from autobahn.wamp.types import RegisterOptions
 from datetime import datetime, timedelta
-from sputnik import util
+from sputnik.util import conversions as util
 
 class TokenService(ServicePlugin):
     def __init__(self):

@@ -569,10 +569,10 @@ def main():
     router_share_async(administrator_export, "tcp://127.0.0.1:%d" % administrator_port)
 
     logger = LoggingListener(engine, contract)
-    accountant = accountant.AccountantProxy("push",
+    acct = accountant.AccountantProxy("push",
                                             config.get("accountant", "engine_export"),
                                             config.getint("accountant", "engine_export_base_port"))
-    accountant_notifier = AccountantNotifier(engine, accountant, contract)
+    accountant_notifier = AccountantNotifier(engine, acct, contract)
     webserver = push_proxy_async(config.get("webserver", "engine_export"))
     webserver_notifier = WebserverNotifier(engine, webserver, contract)
 
@@ -582,7 +582,7 @@ def main():
 
     forwarder = connect_publisher(config.get("safe_price_forwarder", "zmq_frontend_address"))
 
-    safe_price_notifier = SafePriceNotifier(session, engine, accountant, webserver, forwarder, contract)
+    safe_price_notifier = SafePriceNotifier(session, engine, acct, webserver, forwarder, contract)
     accountant_export = AccountantExport(engine, safe_price_notifier, webserver_notifier)
     router_share_async(accountant_export, "tcp://127.0.0.1:%d" % accountant_port)
 
