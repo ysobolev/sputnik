@@ -1,4 +1,4 @@
 #!/bin/bash
 
-cp -r ${profile_git_root}/dist/admin_templates ${profile_root}/server/sputnik
+cp -r ${profile_git_root}/dist/templates ${profile_root}/server/sputnik
 
