@@ -1,4 +1,4 @@
-Twisted==14.0.0
+Twisted
 txZMQ==0.7.3
 jsonschema>=2.3.0
 SQLAlchemy>=0.7.8
