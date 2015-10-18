@@ -15,6 +15,6 @@ supervisorctl -c $profile_conf/supervisor.conf \$@
 EOF
 chmod +x $profile_root/dist/sctl
 
-ln -sf ../tools/leo .
+ln -sf ../server/sputnik/tools/leo.py leo
 
 

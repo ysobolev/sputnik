@@ -11,13 +11,8 @@ from sqlalchemy.orm.exc import NoResultFound
 import sys
 import os
 
-sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)),
-    "../server"))
-sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)),
-    "../dist/config"))
-
-from sputnik import database, models
-from sputnik import txbitcoinrpc
+from sputnik.database import database, models
+from sputnik.rpc import txbitcoinrpc
 import getpass
 from sputnik import config
 from twisted.internet import defer, reactor, task

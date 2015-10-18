@@ -15,9 +15,6 @@ import textwrap
 import autobahn.wamp.auth
 import Crypto.Random.random
 
-sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)),
-    "../server"))
-
 from sputnik import config
 from sputnik.database import database, models
 from sqlalchemy.orm.exc import NoResultFound

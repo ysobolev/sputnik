@@ -36,7 +36,8 @@ class AutoConfigParser(ConfigParser):
         local = path.abspath("./sputnik.ini")
         root = path.abspath(path.join(path.dirname(__file__),
             "./server/config/sputnik.ini"))
-        dist = path.abspath(path.join(path.dirname(__file__),
+        # TODO: unhack this an use a proper egg to specify the path
+        dist = path.abspath(path.join(path.realpath(path.dirname(__file__)),
             "../../dist/config/sputnik.ini"))
         default = path.abspath(path.join(path.dirname(__file__),
             "../config/sputnik.ini"))

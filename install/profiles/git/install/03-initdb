@@ -1,6 +1,6 @@
 #!/bin/bash
 
-cat << EOF | $profile_root/tools/leo 
+cat << EOF | $profile_root/server/sputnik/tools/leo.py
 database init
 contracts add BTC
 contracts add MXN
@@ -180,7 +180,7 @@ fees add NoFee 0 0 0 0
 fees add LiqProvider 100 0 100 100
 EOF
 
-cat << EOF | $profile_root/tools/leo
+cat << EOF | $profile_root/server/sputnik/tools/leo.py
 accounts add customer
 accounts add m2
 accounts add remainder
