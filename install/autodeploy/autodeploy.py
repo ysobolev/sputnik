@@ -558,6 +558,8 @@ class Instance:
                 result = fabric.api.sudo("make deps %s" % action)
                 if result.failed:
                     fabric.api.get("dist/install.log", "./install.log")
+                    fabric.api.get("dist/install.deps.log",
+                                   "./install.deps.log")
                     raise COMMAND_FAILED
 
     def upgrade(self):
