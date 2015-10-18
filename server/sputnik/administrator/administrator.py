@@ -2679,7 +2679,7 @@ class TicketServerExport(ComponentExport):
         return self.administrator.register_support_ticket(username, nonce, type, foreign_key)
 
 
-if __name__ == "__main__":
+def main():
     log.startLogging(sys.stdout)
 
     session = database.make_session()
