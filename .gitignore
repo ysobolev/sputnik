@@ -13,3 +13,5 @@ postgresql-driver-license.txt
 sputnik.tar
 aux.ini
 _trial_temp
+.coverage*
+*.egg-info
