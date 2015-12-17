@@ -12,6 +12,7 @@ setup(name="sputnik",
                     "sputnik.specs": ["objects/*.json", "rpc/*.json",
                                       "public/*.json"]},
       install_requires=["Twisted", "txZMQ==0.7.3", "jsonschema>=2.3.0",
-                        "autobahn==0.9.5"]
+                        "autobahn==0.9.5"],
+      entry_points = {"console_scripts": ["leo=sputnik.tools.leo:main"]}
      )
       
