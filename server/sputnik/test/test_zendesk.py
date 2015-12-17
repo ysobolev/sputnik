@@ -6,20 +6,14 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 #
 
-__author__ = 'sameer'
-
-import sys
-import os
-
 from twisted.trial import unittest
-from twisted.internet import reactor, task
 from sputnik.administrator import zendesk
 from pprint import pprint
 
 class TestZendesk(unittest.TestCase):
     def setUp(self):
         self.zendesk = zendesk.Zendesk("mimetic", "5bZYIMtkHWTuaJijvkKuXVeaoXumETWdyCa2wTpN", 'sameer@m2.io')
-
+        
     def test_create_ticket_with_files(self):
         user = {'nickname': 'Test',
                 'email': 'testmail@m2.io' }
@@ -45,11 +39,12 @@ class TestZendesk(unittest.TestCase):
         d.addErrback(_err)
 
         def wait_for_dc(result):
-            dc = reactor.getDelayedCalls()
-            if len(dc) > 0:
-                return task.deferLater(reactor, 3, wait_for_dc, result)
-            else:
-                return result
+            #@TODO: replace private treq cleanup code required to 
+            # avoid twisted unit test reactor shutdown errors 
+
+            import treq._utils
+            pool = treq._utils.get_global_pool()
+            return pool.closeCachedConnections()
+
 
         return d.addBoth(wait_for_dc)
-

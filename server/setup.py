@@ -2,7 +2,7 @@
 
 from setuptools import setup, find_packages
 
-setup(name="Sputnik",
+setup(name="sputnik",
       version="1.3.0",
       description="Sputnik Exchange",
       author="Mimetic Markets",
