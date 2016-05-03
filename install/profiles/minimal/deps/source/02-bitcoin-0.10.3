@@ -1,0 +1,29 @@
+#!/bin/bash
+
+SOURCE=https://bitcoin.org/bin/bitcoin-core-0.10.3/bitcoin-0.10.3-linux64.tar.gz
+
+check()
+{
+    which bitcoind
+}
+
+install()
+{
+    cd /usr/local/src
+    wget $SOURCE
+    tar -zxvf bitcoin-0.10.3-linux64.tar.gz
+    cp -R bitcoin-0.10.3/* /usr/local
+}
+
+case $1 in
+    check)
+        check
+        ;;
+    install)
+        install
+        ;;
+    *)
+        echo "usage: $0 check|install"
+        ;;
+esac
+

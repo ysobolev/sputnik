@@ -8,7 +8,8 @@
 from sputnik.plugin import Plugin
 from autobahn.twisted.wamp import ApplicationSession
 from twisted.internet.defer import inlineCallbacks, returnValue, maybeDeferred
-from sputnik import observatory, rpc_schema
+from sputnik import observatory
+from sputnik.rpc import rpc_schema
 
 debug, log, warn, error, critical = observatory.get_loggers("plugin")
 

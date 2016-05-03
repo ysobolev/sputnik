@@ -17,4 +17,3 @@ alembic
 python-dateutil
 python-markdown
 postfix
-python-twisted-mail

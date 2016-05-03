@@ -1,0 +1,4 @@
+#!/bin/bash
+
+$profile_root/server/setup.py develop --user
+

@@ -12,7 +12,7 @@ from sputnik import observatory
 debug, log, warn, error, critical = observatory.get_loggers("administrator_proxy")
 
 from sputnik.webserver.plugin import BackendPlugin
-from sputnik.zmq_util import dealer_proxy_async
+from sputnik.rpc.zmq_util import dealer_proxy_async
 
 class AdministratorProxy(BackendPlugin):
     def __init__(self):

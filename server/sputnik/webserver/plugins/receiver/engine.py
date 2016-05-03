@@ -12,7 +12,7 @@ from sputnik import observatory
 debug, log, warn, error, critical = observatory.get_loggers("engine")
 
 from sputnik.webserver.plugin import ReceiverPlugin
-from sputnik.zmq_util import export, pull_share_async
+from sputnik.rpc.zmq_util import export, pull_share_async
 
 class EngineReceiver(ReceiverPlugin):
     def __init__(self):

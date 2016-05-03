@@ -20,10 +20,10 @@ import subprocess
 import optparse
 import ConfigParser
 import getpass
-import compileall
 import cStringIO
 import tarfile
 import tempfile
+import distutils.core
 
 # __file__ may be a relative path, and this causes problem when we chdir
 __file__ = os.path.abspath(__file__)
@@ -463,31 +463,25 @@ class Installer():
         self.make_dep_stage("build")
 
     def make_build(self):
-        if not self.config.get("pycompiled"):
-            return
+        # TODO: strip .py if requested
+        # if not self.config.get("pycompiled"):
+        #    return
 
         # make build directory
-        build_root = os.path.join(self.git_root, "dist", "build")
-        build_server = os.path.join(build_root, "server", "sputnik")
-        build_tools = os.path.join(build_root, "tools")
-        shutil.rmtree(build_server, True)
-        shutil.rmtree(build_tools, True)
-
-        # byte-compile compile
-        server_source = os.path.join(self.git_root, "server", "sputnik")
-        tools_source = os.path.join(self.git_root, "tools")
-        compileall.compile_dir(server_source)
-        compileall.compile_dir(tools_source)
-        
-        # copy files
-        def ignore(path, names):
-            ignored = []
-            for name in names:
-                if not fnmatch.fnmatch(name, "*.pyc") and not os.path.isdir(os.path.join(path, name)):
-                    ignored.append(name)
-            return ignored
-        shutil.copytree(server_source, build_server, ignore=ignore)
-        shutil.copytree(tools_source, build_tools, ignore=ignore)
+        dist_root = os.path.join(self.git_root, "dist")
+        build_root = os.path.join(dist_root, "build")
+        shutil.rmtree(build_root, True)
+        os.makedirs(build_root)
+        here = os.getcwd()
+        os.chdir(build_root)
+        dist = distutils.core.run_setup(
+            os.path.join("..", "..", "server", "setup.py"),
+            script_args=["bdist_egg"])
+        name = dist.get_fullname() + "-py2.7.egg"
+        shutil.move(os.path.join("dist", name),
+                    os.path.join("..", name))
+        shutil.rmtree(build_root, True)
+        os.chdir(here)
 
     def make_stage(self, stage):
         # do stage

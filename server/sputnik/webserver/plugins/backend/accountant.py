@@ -12,7 +12,7 @@ from sputnik import observatory
 debug, log, warn, error, critical = observatory.get_loggers("accountant_proxy")
 
 from sputnik.webserver.plugin import BackendPlugin
-from sputnik import accountant
+from sputnik.accountant import accountant
 
 class AccountantProxy(BackendPlugin):
     def __init__(self):

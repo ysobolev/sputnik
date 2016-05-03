@@ -14,7 +14,7 @@ debug, log, warn, error, critical = observatory.get_loggers("trader")
 from sputnik.plugin import PluginException
 from sputnik.webserver.plugin import ServicePlugin, authenticated, schema, error_handler
 from sputnik.exception import WebserverException
-from sputnik import util
+from sputnik.util import conversions as util
 import datetime
 
 from twisted.internet.defer import inlineCallbacks, returnValue

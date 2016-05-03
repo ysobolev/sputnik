@@ -8,7 +8,7 @@
 
 from sputnik import config
 from sputnik import observatory
-from sputnik import util
+from sputnik.util import conversions as util
 
 debug, log, warn, error, critical = observatory.get_loggers("rpc_market")
 
